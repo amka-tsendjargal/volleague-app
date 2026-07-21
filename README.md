@@ -65,6 +65,8 @@ Local Supabase Studio (table editor, SQL editor, auth users) is at [http://127.0
 
 - **Schema changes**: add a new file under `supabase/migrations/` (`npx supabase migration new <name>`), write plain SQL, then `npx supabase db reset` to apply it locally from scratch.
 - **Seed / local data changes**: add them to `supabase/seed.sql`, then run `npx supabase db reset` to rebuild the local database and re-apply the seed. Don't insert local data by hand in Studio — it won't survive the next reset unless it's in `seed.sql`.
+- **Catching up on someone else's new migration**: `npx supabase migration up` applies only pending migrations (tracked in a `supabase_migrations` table) without touching your existing local data — faster than a full `db reset` when you don't need a clean slate.
+- **Reversing a migration**: `npx supabase migration down --last <n>` rolls back the last `n` migration versions. Note this isn't a per-migration "down" script like some other tools — it works by resetting the database and replaying all migrations except the last `n`, so any local data not in `seed.sql` is lost.
 - **Push to the cloud project**: `npx supabase db push` once you're happy with a migration. Since the project is shared, coordinate before pushing so migrations don't conflict.
 - **Pull cloud schema changes made outside a migration** (e.g. someone edited a table in the dashboard): `npx supabase db pull`.
 
