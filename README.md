@@ -92,3 +92,5 @@ All tables have Row Level Security enabled: any signed-in user can read everythi
 ## Deploying
 
 Deploy on [Vercel](https://vercel.com/new) or any Node host that supports Next.js 16. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in the deployment environment to your **cloud** Supabase project's values (Project Settings → API), not the local ones. Run `npx supabase db push` to make sure the cloud project's schema is up to date before deploying.
+
+## Testing pull requests
