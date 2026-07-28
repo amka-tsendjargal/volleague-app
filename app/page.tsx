@@ -7,10 +7,17 @@ export default function Home() {
       <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
         Volleague
       </h1>
-      <Button
-        nativeButton={false}
-        render={<Link href="/teams/new">Create a Team</Link>}
-      />
+      <div className="flex items-center gap-3">
+        <Button
+          nativeButton={false}
+          render={<Link href="/teams/new">Create a Team</Link>}
+        />
+        <Button
+          nativeButton={false}
+          variant="outline"
+          render={<Link href="/teams">View Teams</Link>}
+        />
+      </div>
     </div>
   );
 }
