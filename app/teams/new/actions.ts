@@ -2,12 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  SEED_CAPTAIN_ID,
-  TEAM_TIERS,
-  MIN_TEAM_NAME_LENGTH,
-  TEAM_NAME_PATTERN,
-} from "@/lib/constants";
+import { SEED_CAPTAIN_ID } from "@/lib/constants";
+import { getNameLengthError, validateTeamInput } from "./validation";
 
 export type CreateTeamState = {
   error?: string;
@@ -15,44 +11,7 @@ export type CreateTeamState = {
   teamName?: string;
 };
 
-const validTiers = new Set<number>(TEAM_TIERS.map((tier) => tier.value));
-
 export type NameAvailability = { available: boolean } | { error: string };
-
-function getNameLengthError(name: string): string | null {
-  if (name.length < MIN_TEAM_NAME_LENGTH) {
-    return `Team name must be at least ${MIN_TEAM_NAME_LENGTH} characters.`;
-  }
-  return null;
-}
-
-function validateTeamInput(
-  name: string,
-  tier: number,
-  jerseyId: number,
-  positionId: number
-): string | null {
-  const nameLengthError = getNameLengthError(name);
-  if (nameLengthError) {
-    return nameLengthError;
-  }
-  if (name.length > 255) {
-    return "Team name must be 255 characters or fewer.";
-  }
-  if (!TEAM_NAME_PATTERN.test(name)) {
-    return "Team name can only contain letters, numbers, and spaces.";
-  }
-  if (!validTiers.has(tier)) {
-    return "Choose a valid tier.";
-  }
-  if (!Number.isInteger(jerseyId) || jerseyId <= 0) {
-    return "Choose a jersey.";
-  }
-  if (!Number.isInteger(positionId) || positionId <= 0) {
-    return "Choose your position.";
-  }
-  return null;
-}
 
 // TODO: Only check for uniqueness within the same season, update function and add uniqueness constraint in db
 //
