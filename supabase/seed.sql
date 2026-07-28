@@ -26,7 +26,7 @@ insert into auth.users (
   crypt('password123', gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}',
-  '{"name":"Sam Player"}',
+  '{"first_name":"Sam","last_name":"Player","phone_number":"555-0100"}',
   now(), now()
 )
 on conflict (id) do nothing;
