@@ -3,12 +3,11 @@ import { redirect } from 'next/navigation'
 
 import { createClient } from '@/lib/supabase/server'
 
-import { signup, type SignupState } from '../actions'
+import { login, type LoginState } from '../actions'
 
 // Mock the external dependencies so this stays a unit test: no real Supabase
 // call, no real navigation, no real cache invalidation (which would need a
-// request scope). The DB trigger / RLS behavior is covered separately by an
-// integration test against local Supabase, not here.
+// request scope).
 jest.mock('next/cache', () => ({ revalidatePath: jest.fn() }))
 jest.mock('next/navigation', () => ({ redirect: jest.fn() }))
 jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }))
@@ -21,7 +20,7 @@ const mockCreateClient = jest.mocked(createClient)
 // success path stops after redirecting (and never falls through to a return).
 const REDIRECT_SIGNAL = 'NEXT_REDIRECT'
 
-const signUpMock = jest.fn()
+const signInWithPasswordMock = jest.fn()
 
 function buildFormData(fields: Record<string, string>): FormData {
   const formData = new FormData()
@@ -32,88 +31,84 @@ function buildFormData(fields: Record<string, string>): FormData {
 }
 
 const validFields = {
-  firstName: 'Bing',
-  lastName: 'Chilling',
   email: 'bing@example.com',
-  phoneNumber: '+1-587-111-0100',
   password: 'supersecret',
 }
 
 // A no-op previous state; useActionState passes this in production.
-const prevState: SignupState = {}
+const prevState: LoginState = {}
 
 beforeEach(() => {
   jest.clearAllMocks()
-  signUpMock.mockResolvedValue({ data: {}, error: null })
-  // Only the auth.signUp surface is exercised; cast the partial stub to the
-  // full client type the action expects.
+  signInWithPasswordMock.mockResolvedValue({ data: {}, error: null })
+  // Only the auth.signInWithPassword surface is exercised; cast the partial
+  // stub to the full client type the action expects.
   mockCreateClient.mockResolvedValue({
-    auth: { signUp: signUpMock },
+    auth: { signInWithPassword: signInWithPasswordMock },
   } as unknown as Awaited<ReturnType<typeof createClient>>)
   mockRedirect.mockImplementation(() => {
     throw new Error(REDIRECT_SIGNAL)
   })
 })
 
-describe('signup action', () => {
+describe('login action', () => {
   it('does not call Supabase when validation fails', async () => {
-    const result = await signup(prevState, buildFormData({ ...validFields, email: 'bad' }))
+    const result = await login(
+      prevState,
+      buildFormData({ ...validFields, email: 'bad' })
+    )
 
     expect(result.fieldErrors?.email).toBe('Enter a valid email address.')
     expect(mockCreateClient).not.toHaveBeenCalled()
-    expect(signUpMock).not.toHaveBeenCalled()
+    expect(signInWithPasswordMock).not.toHaveBeenCalled()
     expect(mockRedirect).not.toHaveBeenCalled()
   })
 
-  it('passes email/password and snake_case metadata to Supabase', async () => {
+  it('passes email and password to Supabase', async () => {
     // Success path redirects, which throws our REDIRECT_SIGNAL.
-    await expect(signup(prevState, buildFormData(validFields))).rejects.toThrow(
+    await expect(login(prevState, buildFormData(validFields))).rejects.toThrow(
       REDIRECT_SIGNAL
     )
 
-    expect(signUpMock).toHaveBeenCalledTimes(1)
-    expect(signUpMock).toHaveBeenCalledWith({
+    expect(signInWithPasswordMock).toHaveBeenCalledTimes(1)
+    expect(signInWithPasswordMock).toHaveBeenCalledWith({
       email: 'bing@example.com',
       password: 'supersecret',
-      options: {
-        data: {
-          first_name: 'Bing',
-          last_name: 'Chilling',
-          phone_number: '+1-587-111-0100',
-        },
-      },
     })
   })
 
-  it('trims names/email/phone but preserves the password verbatim', async () => {
+  it('trims the email but preserves the password verbatim', async () => {
     await expect(
-      signup(
+      login(
         prevState,
         buildFormData({
-          firstName: '  Bing  ',
-          lastName: '  Chilling  ',
           email: '  bing@example.com  ',
-          phoneNumber: '  +1-587-111-0100  ',
           password: '  spaced pw  ',
         })
       )
     ).rejects.toThrow(REDIRECT_SIGNAL)
 
-    expect(signUpMock).toHaveBeenCalledWith({
+    expect(signInWithPasswordMock).toHaveBeenCalledWith({
       email: 'bing@example.com',
       password: '  spaced pw  ',
-      options: {
-        data: {
-          first_name: 'Bing',
-          last_name: 'Chilling',
-          phone_number: '+1-587-111-0100',
-        },
-      },
+    })
+  })
+
+  // Signup rejects these before the round-trip; login must let Supabase decide,
+  // so a pre-existing short password can still sign in.
+  it('sends a password shorter than the signup minimum to Supabase', async () => {
+    await expect(
+      login(prevState, buildFormData({ ...validFields, password: 'a' }))
+    ).rejects.toThrow(REDIRECT_SIGNAL)
+
+    expect(signInWithPasswordMock).toHaveBeenCalledWith({
+      email: 'bing@example.com',
+      password: 'a',
     })
   })
 
   it('redirects to "/" on success', async () => {
-    await expect(signup(prevState, buildFormData(validFields))).rejects.toThrow(
+    await expect(login(prevState, buildFormData(validFields))).rejects.toThrow(
       REDIRECT_SIGNAL
     )
     expect(mockRedirect).toHaveBeenCalledWith('/')
@@ -122,32 +117,32 @@ describe('signup action', () => {
   // The root layout renders the signed-in name, so a stale cached layout would
   // show the logged-out header on the page we redirect to.
   it('revalidates the root layout before redirecting on success', async () => {
-    await expect(signup(prevState, buildFormData(validFields))).rejects.toThrow(
+    await expect(login(prevState, buildFormData(validFields))).rejects.toThrow(
       REDIRECT_SIGNAL
     )
     expect(mockRevalidatePath).toHaveBeenCalledWith('/', 'layout')
   })
 
-  it('does not revalidate when signup fails', async () => {
-    signUpMock.mockResolvedValue({
+  it('does not revalidate when login fails', async () => {
+    signInWithPasswordMock.mockResolvedValue({
       data: {},
-      error: { message: 'User already registered' },
+      error: { message: 'Invalid login credentials' },
     })
 
-    await signup(prevState, buildFormData(validFields))
+    await login(prevState, buildFormData(validFields))
 
     expect(mockRevalidatePath).not.toHaveBeenCalled()
   })
 
   it('returns the Supabase error message and does not redirect', async () => {
-    signUpMock.mockResolvedValue({
+    signInWithPasswordMock.mockResolvedValue({
       data: {},
-      error: { message: 'User already registered' },
+      error: { message: 'Invalid login credentials' },
     })
 
-    const result = await signup(prevState, buildFormData(validFields))
+    const result = await login(prevState, buildFormData(validFields))
 
-    expect(result).toEqual({ error: 'User already registered' })
+    expect(result).toEqual({ error: 'Invalid login credentials' })
     expect(mockRedirect).not.toHaveBeenCalled()
   })
 })
