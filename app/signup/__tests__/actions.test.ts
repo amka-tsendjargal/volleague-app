@@ -1,15 +1,19 @@
+import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
 import { createClient } from '@/lib/supabase/server'
 
 import { signup, type SignupState } from '../actions'
 
-// Mock the two external dependencies so this stays a unit test: no real Supabase
-// call, no real navigation. The DB trigger / RLS behavior is covered separately
-// by an integration test against local Supabase, not here.
+// Mock the external dependencies so this stays a unit test: no real Supabase
+// call, no real navigation, no real cache invalidation (which would need a
+// request scope). The DB trigger / RLS behavior is covered separately by an
+// integration test against local Supabase, not here.
+jest.mock('next/cache', () => ({ revalidatePath: jest.fn() }))
 jest.mock('next/navigation', () => ({ redirect: jest.fn() }))
 jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }))
 
+const mockRevalidatePath = jest.mocked(revalidatePath)
 const mockRedirect = jest.mocked(redirect)
 const mockCreateClient = jest.mocked(createClient)
 
@@ -113,6 +117,26 @@ describe('signup action', () => {
       REDIRECT_SIGNAL
     )
     expect(mockRedirect).toHaveBeenCalledWith('/')
+  })
+
+  // The root layout renders the signed-in name, so a stale cached layout would
+  // show the logged-out header on the page we redirect to.
+  it('revalidates the root layout before redirecting on success', async () => {
+    await expect(signup(prevState, buildFormData(validFields))).rejects.toThrow(
+      REDIRECT_SIGNAL
+    )
+    expect(mockRevalidatePath).toHaveBeenCalledWith('/', 'layout')
+  })
+
+  it('does not revalidate when signup fails', async () => {
+    signUpMock.mockResolvedValue({
+      data: {},
+      error: { message: 'User already registered' },
+    })
+
+    await signup(prevState, buildFormData(validFields))
+
+    expect(mockRevalidatePath).not.toHaveBeenCalled()
   })
 
   it('returns the Supabase error message and does not redirect', async () => {

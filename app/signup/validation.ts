@@ -5,6 +5,8 @@
 // it separate also means these rules can be unit-tested without touching Next.js
 // or Supabase.
 
+import { getEmailError } from '@/lib/email'
+
 // Fields the signup form collects. First/last name and phone number end up in
 // public.users; email and password are owned by Supabase Auth (auth.users).
 export type SignupField =
@@ -17,10 +19,6 @@ export type SignupField =
 export type SignupInput = Record<SignupField, string>
 
 export type SignupFieldErrors = Partial<Record<SignupField, string>>
-
-// Basic email shape check. Supabase validates too; this is for fast, friendly
-// feedback before the network round-trip.
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 // Matches `minimum_password_length` in supabase/config.toml so the client and
 // server agree on what counts as valid.
@@ -39,11 +37,8 @@ export function validateSignupInput(input: SignupInput): SignupFieldErrors {
   if (!input.firstName) fieldErrors.firstName = 'First name is required.'
   if (!input.lastName) fieldErrors.lastName = 'Last name is required.'
 
-  if (!input.email) {
-    fieldErrors.email = 'Email is required.'
-  } else if (!emailPattern.test(input.email)) {
-    fieldErrors.email = 'Enter a valid email address.'
-  }
+  const emailError = getEmailError(input.email)
+  if (emailError) fieldErrors.email = emailError
 
   if (!input.phoneNumber) fieldErrors.phoneNumber = 'Phone number is required.'
 
