@@ -1,7 +1,9 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
+import { readString, readTrimmed } from '@/lib/form-data'
 import { createClient } from '@/lib/supabase/server'
 
 import {
@@ -15,18 +17,6 @@ export type SignupState = {
   error?: string
   // Per-field validation messages, keyed by form field name.
   fieldErrors?: SignupFieldErrors
-}
-
-// FormData.get returns `FormDataEntryValue | null` (a string or an uploaded
-// File). Reading into a local lets `typeof` narrow it to string with no cast;
-// non-string entries (a File, or a missing field) collapse to an empty string.
-function readString(formData: FormData, key: string): string {
-  const value = formData.get(key)
-  return typeof value === 'string' ? value : ''
-}
-
-function readTrimmed(formData: FormData, key: string): string {
-  return readString(formData, key).trim()
 }
 
 /**
@@ -76,6 +66,11 @@ export async function signup(
   if (error) {
     return { error: error.message }
   }
+
+  // The root layout renders the signed-in name, so the client's cached copy of
+  // it is now stale. Revalidate the layout before navigating, otherwise the
+  // header would keep rendering the logged-out state until a full reload.
+  revalidatePath('/', 'layout')
 
   // Email confirmations are disabled (supabase/config.toml), so signUp returns
   // an active session and the user is signed in. Send them into the app.
