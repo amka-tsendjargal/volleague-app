@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, Circle, Loader2, X } from "lucide-react";
 import {
   createTeam,
@@ -30,6 +30,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { toast } from "@/components/ui/toast";
 
 type Jersey = { id: number; kit_name: string };
 type Position = { id: number; name: string };
@@ -79,6 +80,7 @@ export function CreateTeamForm({
     createTeam,
     initialState
   );
+  const router = useRouter();
 
   const [name, setName] = useState("");
   const [nameStatus, setNameStatus] = useState<NameStatus>("idle");
@@ -162,23 +164,18 @@ export function CreateTeamForm({
 
   useEffect(() => clearDebounce, []);
 
-  if (state.success) {
-    return (
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Team created</CardTitle>
-          <CardDescription>
-            {`${state.teamName} is set up and you're listed as captain.`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Link href="/" className="text-sm underline underline-offset-4">
-            Back home
-          </Link>
-        </CardContent>
-      </Card>
-    );
-  }
+  // The Toaster lives in the root layout, so the snackbar survives the redirect.
+  useEffect(() => {
+    if (!state.success) return;
+    toast.add({
+      id: "team-created",
+      type: "success",
+      title: "Team created",
+      description: `${state.teamName} is set up and you're listed as captain.`,
+    });
+    // TODO: route to teams page once available
+    router.push("/");
+  }, [state.success, state.teamName, router]);
 
   return (
     <Card className="w-full max-w-md">
