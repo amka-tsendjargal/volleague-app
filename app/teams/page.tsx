@@ -1,17 +1,13 @@
+import Link from "next/link";
+import { ChevronRightIcon, ImageIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { TEAM_TIERS } from "@/lib/constants";
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Team = {
   id: number;
   name: string;
   tier: number;
-  jerseys: { kit_name: string } | null;
 };
 
 export default async function TeamsPage() {
@@ -19,7 +15,7 @@ export default async function TeamsPage() {
 
   const { data: teams } = await supabase
     .from("teams")
-    .select("id, name, tier, jerseys(kit_name)")
+    .select("id, name, tier")
     .order("name");
 
   const allTeams = (teams as Team[] | null) ?? [];
@@ -49,14 +45,28 @@ export default async function TeamsPage() {
             </h2>
             <div className="flex flex-col gap-3">
               {section.teams.map((team) => (
-                <Card key={team.id}>
-                  <CardHeader>
-                    <CardTitle>{team.name}</CardTitle>
-                    {team.jerseys?.kit_name && (
-                      <CardDescription>{team.jerseys.kit_name}</CardDescription>
-                    )}
-                  </CardHeader>
-                </Card>
+                <Link
+                  key={team.id}
+                  href={`/teams/${team.id}`}
+                  className="rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <Card className="group/team transition-colors hover:bg-muted/50">
+                    <CardHeader className="flex flex-row items-center gap-3">
+                      {/* Placeholder until teams can upload a logo. */}
+                      <div
+                        aria-hidden
+                        className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
+                      >
+                        <ImageIcon className="size-5" />
+                      </div>
+                      <CardTitle>{team.name}</CardTitle>
+                      <ChevronRightIcon
+                        aria-hidden
+                        className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-hover/team:translate-x-0.5"
+                      />
+                    </CardHeader>
+                  </Card>
+                </Link>
               ))}
             </div>
           </div>

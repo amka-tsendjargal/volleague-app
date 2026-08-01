@@ -1,8 +1,20 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import { CreateTeamForm } from "./create-team-form";
 
 export default async function NewTeamPage() {
-  const supabase = createAdminClient();
+  const supabase = await createClient();
+
+  // Creating a team makes you its captain, so there has to be a "you".
+  // createTeam re-checks; this just keeps signed-out visitors from filling
+  // in the whole form only to be turned away on submit.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
 
   const [{ data: jerseys }, { data: positions }] = await Promise.all([
     supabase.from("jerseys").select("id, kit_name").order("kit_name"),
