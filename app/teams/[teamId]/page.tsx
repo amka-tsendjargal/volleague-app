@@ -26,22 +26,38 @@ export default async function TeamDetailsPage({
 
   const supabase = await createClient();
 
-  const { data: team } = await supabase
+  const { data: team, error: teamError } = await supabase
     .from("teams")
     .select("id, name, tier")
     .eq("id", id)
     .maybeSingle();
 
+  // A failed query also returns no data, so check the error first — otherwise
+  // Supabase being unreachable would render as "this team doesn't exist".
+  if (teamError) {
+    throw new Error(`Failed to load team ${id}`, { cause: teamError });
+  }
+
+  // No error and no row means the team really isn't there (or RLS hides it,
+  // which should look the same to the caller).
   if (!team) {
     notFound();
   }
 
-  const { data: roster } = await supabase
+  const { data: roster, error: rosterError } = await supabase
     .from("team_users")
     .select("id, is_captain, users(first_name, last_name), positions(name)")
     .eq("team_id", team.id);
 
-  const players = ((roster as TeamUserRow[] | null) ?? [])
+  if (rosterError) {
+    throw new Error(`Failed to load the roster for team ${id}`, {
+      cause: rosterError,
+    });
+  }
+
+  // PostgREST returns a single object for a many-to-one embed; supabase-js
+  // infers an array without generated database types.
+  const players = (roster as unknown as TeamUserRow[])
     .map((row) => ({
       id: row.id,
       name: row.users
