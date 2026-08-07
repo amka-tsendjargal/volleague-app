@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { SEED_CAPTAIN_ID } from "@/lib/constants";
+import { createClient } from "@/lib/supabase/server";
 import { getNameLengthError, validateTeamInput } from "./validation";
 
 export type CreateTeamState = {
@@ -28,7 +27,7 @@ export async function checkTeamNameAvailability(
     return { error: nameLengthError };
   }
 
-  const supabase = createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("teams")
@@ -57,29 +56,32 @@ export async function createTeam(
     return { error: validationError };
   }
 
-  const supabase = createAdminClient();
+  const supabase = await createClient();
 
-  const { data: team, error: teamError } = await supabase
-    .from("teams")
-    .insert({ name, tier, jersey_id: jerseyId })
-    .select("id")
-    .single();
+  // The page already redirects signed-out visitors, so this only catches a
+  // session that expired between loading the form and submitting it.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (teamError || !team) {
-    return { error: "Could not create the team. Please try again." };
+  if (!user) {
+    return { error: "You must be signed in to create a team." };
   }
 
-  const { error: teamUserError } = await supabase.from("team_users").insert({
-    user_id: SEED_CAPTAIN_ID,
-    team_id: team.id,
-    position_id: positionId,
-    is_captain: true,
+  // Inserting the team and its captain row are one transaction inside
+  // create_team_with_captain (see supabase/migrations) — PostgREST gives
+  // each request its own transaction, so doing the two inserts from here
+  // would leave an orphaned team behind whenever the second one failed.
+  // The captain is taken from the session inside the function, not passed.
+  const { error } = await supabase.rpc("create_team_with_captain", {
+    team_name: name,
+    team_tier: tier,
+    team_jersey_id: jerseyId,
+    team_position_id: positionId,
   });
 
-  if (teamUserError) {
-    // No cross-table transaction over PostgREST, so clean up best-effort.
-    await supabase.from("teams").delete().eq("id", team.id);
-    return { error: "Could not add you to the team. Please try again." };
+  if (error) {
+    return { error: "Could not create the team. Please try again." };
   }
 
   revalidatePath("/");

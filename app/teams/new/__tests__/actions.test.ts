@@ -1,7 +1,6 @@
 import { revalidatePath } from 'next/cache'
 
-import { createAdminClient } from '@/lib/supabase/admin'
-import { SEED_CAPTAIN_ID } from '@/lib/constants'
+import { createClient } from '@/lib/supabase/server'
 
 import {
   checkTeamNameAvailability,
@@ -12,78 +11,66 @@ import {
 // Mock the two external dependencies so this stays a unit test: no real
 // Supabase call, no real cache revalidation.
 jest.mock('next/cache', () => ({ revalidatePath: jest.fn() }))
-jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }))
+jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }))
 
 const mockRevalidatePath = jest.mocked(revalidatePath)
-const mockCreateAdminClient = jest.mocked(createAdminClient)
+const mockCreateClient = jest.mocked(createClient)
 
 type Result = { data?: unknown; error?: unknown }
 
+const SIGNED_IN_USER = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }
+
 // A minimal stand-in for a Supabase query builder. Every chain method
-// returns the same object (like the real builder), and the object is
-// itself thenable so `await builder` resolves without a terminal call —
-// this mirrors how `.delete().eq(...)` is awaited directly in actions.ts.
-// Which "result" it resolves to depends on whether insert/delete/select
-// was the most recent operation invoked on the chain.
+// returns the same object (like the real builder), and the terminal
+// call resolves to whatever the test configured for `teams`.
 type TableMock = {
   select: (...args: unknown[]) => TableMock
-  insert: (...args: unknown[]) => TableMock
-  delete: (...args: unknown[]) => TableMock
   ilike: (...args: unknown[]) => TableMock
-  eq: (...args: unknown[]) => TableMock
   maybeSingle: () => Promise<Result>
-  single: () => Promise<Result>
-  then: Promise<Result>['then']
 }
 
-function createTableMock(results: {
-  insert?: Result
-  select?: Result
-  delete?: Result
-}): TableMock {
-  let op: 'insert' | 'select' | 'delete' = 'select'
-
-  const resultFor = () =>
-    Promise.resolve(results[op] ?? { data: null, error: null })
-
+function createTableMock(result: Result): TableMock {
   const builder: TableMock = {
     select: jest.fn(() => builder),
-    insert: jest.fn(() => {
-      op = 'insert'
-      return builder
-    }),
-    delete: jest.fn(() => {
-      op = 'delete'
-      return builder
-    }),
     ilike: jest.fn(() => builder),
-    eq: jest.fn(() => builder),
-    maybeSingle: jest.fn(() => resultFor()),
-    single: jest.fn(() => resultFor()),
-    then: (resolve, reject) => resultFor().then(resolve, reject),
+    maybeSingle: jest.fn(() => Promise.resolve(result)),
   }
 
   return builder
 }
 
 function mockSupabase(config: {
-  teams?: { insert?: Result; select?: Result; delete?: Result }
-  teamUsers?: { insert?: Result }
-}) {
-  const teamsTable = createTableMock(config.teams ?? {})
-  const teamUsersTable = createTableMock(config.teamUsers ?? {})
+  teams?: Result
+  rpc?: Result
+  user?: { id: string } | null
+} = {}) {
+  const teamsTable = createTableMock(config.teams ?? { data: null, error: null })
 
   const fromMock = jest.fn((table: string) => {
     if (table === 'teams') return teamsTable
-    if (table === 'team_users') return teamUsersTable
     throw new Error(`Unexpected table: ${table}`)
   })
 
-  mockCreateAdminClient.mockReturnValue({
-    from: fromMock,
-  } as unknown as ReturnType<typeof createAdminClient>)
+  const rpcMock = jest.fn(() =>
+    Promise.resolve(config.rpc ?? { data: 1, error: null })
+  )
 
-  return { fromMock, teamsTable, teamUsersTable }
+  const getUserMock = jest.fn(() =>
+    Promise.resolve({
+      data: { user: config.user === undefined ? SIGNED_IN_USER : config.user },
+      error: null,
+    })
+  )
+
+  // Only the from/rpc/auth.getUser surfaces are exercised; cast the partial
+  // stub to the full client type the action expects.
+  mockCreateClient.mockResolvedValue({
+    from: fromMock,
+    rpc: rpcMock,
+    auth: { getUser: getUserMock },
+  } as unknown as Awaited<ReturnType<typeof createClient>>)
+
+  return { fromMock, rpcMock, getUserMock, teamsTable }
 }
 
 function buildFormData(fields: Record<string, string>): FormData {
@@ -110,7 +97,7 @@ beforeEach(() => {
 
 describe('checkTeamNameAvailability', () => {
   it('returns a length error without querying Supabase', async () => {
-    const { fromMock } = mockSupabase({})
+    const { fromMock } = mockSupabase()
 
     const result = await checkTeamNameAvailability('ab')
 
@@ -121,9 +108,7 @@ describe('checkTeamNameAvailability', () => {
   })
 
   it('trims the name before checking length and querying', async () => {
-    const { teamsTable } = mockSupabase({
-      teams: { select: { data: null, error: null } },
-    })
+    const { teamsTable } = mockSupabase()
 
     await checkTeamNameAvailability('  Spikers  ')
 
@@ -131,7 +116,7 @@ describe('checkTeamNameAvailability', () => {
   })
 
   it('reports a name as available when no matching row exists', async () => {
-    mockSupabase({ teams: { select: { data: null, error: null } } })
+    mockSupabase({ teams: { data: null, error: null } })
 
     const result = await checkTeamNameAvailability('Spikers')
 
@@ -139,9 +124,7 @@ describe('checkTeamNameAvailability', () => {
   })
 
   it('reports a name as taken when a matching row exists', async () => {
-    mockSupabase({
-      teams: { select: { data: { id: 1 }, error: null } },
-    })
+    mockSupabase({ teams: { data: { id: 1 }, error: null } })
 
     const result = await checkTeamNameAvailability('Spikers')
 
@@ -149,9 +132,7 @@ describe('checkTeamNameAvailability', () => {
   })
 
   it('checks availability case-insensitively via ilike', async () => {
-    const { teamsTable } = mockSupabase({
-      teams: { select: { data: null, error: null } },
-    })
+    const { teamsTable } = mockSupabase()
 
     await checkTeamNameAvailability('spikers')
 
@@ -160,9 +141,7 @@ describe('checkTeamNameAvailability', () => {
   })
 
   it('returns an error when the availability query fails', async () => {
-    mockSupabase({
-      teams: { select: { data: null, error: { message: 'boom' } } },
-    })
+    mockSupabase({ teams: { data: null, error: { message: 'boom' } } })
 
     const result = await checkTeamNameAvailability('Spikers')
 
@@ -174,7 +153,7 @@ describe('checkTeamNameAvailability', () => {
 
 describe('createTeam', () => {
   it('does not call Supabase when validation fails', async () => {
-    const { fromMock } = mockSupabase({})
+    const { rpcMock, getUserMock } = mockSupabase()
 
     const result = await createTeam(
       prevState,
@@ -184,115 +163,78 @@ describe('createTeam', () => {
     expect(result).toEqual({
       error: 'Team name must be at least 3 characters.',
     })
-    expect(fromMock).not.toHaveBeenCalled()
+    expect(getUserMock).not.toHaveBeenCalled()
+    expect(rpcMock).not.toHaveBeenCalled()
   })
 
-  it('trims the name before validating and inserting', async () => {
-    const { teamsTable } = mockSupabase({
-      teams: { insert: { data: { id: 1 }, error: null } },
-      teamUsers: { insert: { data: {}, error: null } },
+  it('refuses to create a team when there is no session', async () => {
+    const { rpcMock } = mockSupabase({ user: null })
+
+    const result = await createTeam(prevState, buildFormData(validFields))
+
+    expect(result).toEqual({
+      error: 'You must be signed in to create a team.',
     })
+    expect(rpcMock).not.toHaveBeenCalled()
+    expect(mockRevalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('trims the name before validating and creating', async () => {
+    const { rpcMock } = mockSupabase()
 
     await createTeam(
       prevState,
       buildFormData({ ...validFields, name: '  Spikers  ' })
     )
 
-    expect(teamsTable.insert).toHaveBeenCalledWith({
-      name: 'Spikers',
-      tier: 1,
-      jersey_id: 1,
+    expect(rpcMock).toHaveBeenCalledWith('create_team_with_captain', {
+      team_name: 'Spikers',
+      team_tier: 1,
+      team_jersey_id: 1,
+      team_position_id: 1,
     })
   })
 
-  it('returns an error and skips team_users when the team insert fails', async () => {
-    const { teamsTable, teamUsersTable } = mockSupabase({
-      teams: { insert: { data: null, error: { message: 'boom' } } },
-    })
+  it('returns an error when the rpc fails', async () => {
+    mockSupabase({ rpc: { data: null, error: { message: 'boom' } } })
 
     const result = await createTeam(prevState, buildFormData(validFields))
 
     expect(result).toEqual({
       error: 'Could not create the team. Please try again.',
     })
-    expect(teamUsersTable.insert).not.toHaveBeenCalled()
-    expect(teamsTable.delete).not.toHaveBeenCalled()
     expect(mockRevalidatePath).not.toHaveBeenCalled()
   })
 
-  it('returns an error when the team insert succeeds but returns no row', async () => {
-    const { teamUsersTable } = mockSupabase({
-      teams: { insert: { data: null, error: null } },
-    })
+  it('creates the team and its captain in a single call on success', async () => {
+    const { rpcMock } = mockSupabase({ rpc: { data: 7, error: null } })
 
     const result = await createTeam(prevState, buildFormData(validFields))
 
-    expect(result).toEqual({
-      error: 'Could not create the team. Please try again.',
+    // The captain comes from the session inside the function, so the
+    // action never sends a user id — there is nothing here to spoof.
+    expect(rpcMock).toHaveBeenCalledTimes(1)
+    expect(rpcMock).toHaveBeenCalledWith('create_team_with_captain', {
+      team_name: 'Spikers',
+      team_tier: 1,
+      team_jersey_id: 1,
+      team_position_id: 1,
     })
-    expect(teamUsersTable.insert).not.toHaveBeenCalled()
-  })
-
-  it('cleans up the team when adding the captain fails', async () => {
-    const { teamsTable, teamUsersTable } = mockSupabase({
-      teams: { insert: { data: { id: 42 }, error: null } },
-      teamUsers: { insert: { data: null, error: { message: 'boom' } } },
-    })
-
-    const result = await createTeam(prevState, buildFormData(validFields))
-
-    expect(result).toEqual({
-      error: 'Could not add you to the team. Please try again.',
-    })
-    expect(teamUsersTable.insert).toHaveBeenCalledWith({
-      user_id: SEED_CAPTAIN_ID,
-      team_id: 42,
-      position_id: 1,
-      is_captain: true,
-    })
-    expect(teamsTable.delete).toHaveBeenCalled()
-    expect(teamsTable.eq).toHaveBeenCalledWith('id', 42)
-    expect(mockRevalidatePath).not.toHaveBeenCalled()
-  })
-
-  it('creates the team and adds the captain on success', async () => {
-    const { teamsTable, teamUsersTable } = mockSupabase({
-      teams: { insert: { data: { id: 7 }, error: null } },
-      teamUsers: { insert: { data: {}, error: null } },
-    })
-
-    const result = await createTeam(prevState, buildFormData(validFields))
-
-    expect(teamsTable.insert).toHaveBeenCalledWith({
-      name: 'Spikers',
-      tier: 1,
-      jersey_id: 1,
-    })
-    expect(teamUsersTable.insert).toHaveBeenCalledWith({
-      user_id: SEED_CAPTAIN_ID,
-      team_id: 7,
-      position_id: 1,
-      is_captain: true,
-    })
-    expect(teamsTable.delete).not.toHaveBeenCalled()
     expect(mockRevalidatePath).toHaveBeenCalledWith('/')
     expect(result).toEqual({ success: true, teamName: 'Spikers' })
   })
 
-  it('does not re-check uniqueness before inserting, so duplicate names both succeed', async () => {
+  it('does not re-check uniqueness before creating, so duplicate names both succeed', async () => {
     // Documents a known gap (see the TODO in actions.ts): createTeam never
     // calls checkTeamNameAvailability itself, so nothing stops two calls
     // with the same name from both succeeding.
-    const { teamsTable } = mockSupabase({
-      teams: { insert: { data: { id: 1 }, error: null } },
-      teamUsers: { insert: { data: {}, error: null } },
-    })
+    const { rpcMock } = mockSupabase()
 
     const first = await createTeam(prevState, buildFormData(validFields))
     const second = await createTeam(prevState, buildFormData(validFields))
 
     expect(first.success).toBe(true)
     expect(second.success).toBe(true)
-    expect(teamsTable.insert).toHaveBeenCalledTimes(2)
+    expect(rpcMock).toHaveBeenCalledTimes(2)
   })
 })
