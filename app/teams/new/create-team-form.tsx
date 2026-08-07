@@ -30,12 +30,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Progress, ProgressLabel } from "@/components/ui/progress";
 import { toast } from "@/components/ui/toast";
+import { PositionForm, type Position } from "./position-form";
 
 type Jersey = { id: number; kit_name: string };
-type Position = { id: number; name: string };
 
 type NameStatus = "idle" | "checking" | "available" | "taken" | "error";
+
+// Ordered, so the progress bar reads its position and total from the list
+// rather than from numbers that have to be kept in sync by hand.
+const STEPS = ["details", "position"] as const;
+
+type Step = (typeof STEPS)[number];
 
 const DEBOUNCE_MS = 500;
 const initialState: CreateTeamState = {};
@@ -82,6 +89,9 @@ export function CreateTeamForm({
   );
   const router = useRouter();
 
+  // Every field lives here rather than in the step that renders it, so
+  // stepping back and forth never loses what was already filled in.
+  const [step, setStep] = useState<Step>("details");
   const [name, setName] = useState("");
   const [nameStatus, setNameStatus] = useState<NameStatus>("idle");
   const [nameMessage, setNameMessage] = useState<string | null>(null);
@@ -95,11 +105,13 @@ export function CreateTeamForm({
     trimmedName.length === 0 || TEAM_NAME_PATTERN.test(trimmedName);
   const meetsNameRequirements = hasMinLength && hasValidChars;
 
-  const isFormFilled =
-    name.trim().length > 0 &&
+  const canContinue =
+    trimmedName.length > 0 &&
     tier !== "" &&
     jerseyId !== "" &&
-    positionId !== "";
+    meetsNameRequirements &&
+    nameStatus !== "checking" &&
+    nameStatus !== "taken";
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Guards against an older, slower check response overwriting a newer one.
@@ -164,6 +176,14 @@ export function CreateTeamForm({
 
   useEffect(() => clearDebounce, []);
 
+  function handleDetailsSubmit(event: React.SubmitEvent<HTMLFormElement>) {
+    // Step 1 never posts anywhere — it only unlocks step 2, which is the
+    // form that carries every answer to createTeam.
+    event.preventDefault();
+    if (!canContinue) return;
+    setStep("position");
+  }
+
   // The Toaster lives in the root layout, so the snackbar survives the redirect.
   useEffect(() => {
     if (!state.success) return;
@@ -177,167 +197,153 @@ export function CreateTeamForm({
     router.push("/");
   }, [state.success, state.teamName, router]);
 
+  const isDetailsStep = step === "details";
+  const stepNumber = STEPS.indexOf(step) + 1;
+  const progressValue = (stepNumber / STEPS.length) * 100;
+
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>Create a team</CardTitle>
+        <CardTitle>
+          {isDetailsStep ? "Create a team" : "Pick your position"}
+        </CardTitle>
         <CardDescription>
-          Set up your team and you&apos;ll be added as captain.
+          {isDetailsStep
+            ? "Set up your team and you'll be added as captain."
+            : `Tell us where you play for ${trimmedName}.`}
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <form action={formAction} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="name">
-              Team name<span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="name"
-              name="name"
-              required
-              maxLength={255}
-              value={name}
-              onChange={handleNameChange}
-              onBlur={handleNameBlur}
-              aria-invalid={
-                !hasValidChars || nameStatus === "taken" || nameStatus === "error"
-              }
-            />
-            <ul className="flex flex-col gap-1 text-sm">
-              <NameRequirement
-                met={hasMinLength}
-                label={`At least ${MIN_TEAM_NAME_LENGTH} characters`}
+      <CardContent className="flex flex-col gap-4">
+        <Progress value={progressValue} className="gap-1.5">
+          <ProgressLabel className="text-xs font-normal text-muted-foreground">
+            Step {stepNumber} of {STEPS.length}
+          </ProgressLabel>
+        </Progress>
+
+        {isDetailsStep ? (
+          <form onSubmit={handleDetailsSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="name">
+                Team name<span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="name"
+                name="name"
+                required
+                maxLength={255}
+                value={name}
+                onChange={handleNameChange}
+                onBlur={handleNameBlur}
+                aria-invalid={
+                  !hasValidChars || nameStatus === "taken" || nameStatus === "error"
+                }
               />
-              <NameRequirement
-                met={hasValidChars}
-                invalid={!hasValidChars}
-                label="Letters, numbers, and spaces only"
-              />
-            </ul>
-            {nameStatus === "checking" && (
-              <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Loader2 className="size-3.5 animate-spin" />
-                Checking availability…
-              </p>
-            )}
-            {nameStatus === "available" && (
-              <p className="flex items-center gap-1.5 text-sm text-emerald-600">
-                <Check className="size-3.5" />
-                {nameMessage}
-              </p>
-            )}
-            {nameStatus === "taken" && (
-              <p className="flex items-center gap-1.5 text-sm text-destructive">
-                <X className="size-3.5" />
-                {nameMessage}
-              </p>
-            )}
-            {nameStatus === "error" && (
-              <p className="text-sm text-muted-foreground">{nameMessage}</p>
-            )}
-          </div>
+              <ul className="flex flex-col gap-1 text-sm">
+                <NameRequirement
+                  met={hasMinLength}
+                  label={`At least ${MIN_TEAM_NAME_LENGTH} characters`}
+                />
+                <NameRequirement
+                  met={hasValidChars}
+                  invalid={!hasValidChars}
+                  label="Letters, numbers, and spaces only"
+                />
+              </ul>
+              {nameStatus === "checking" && (
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Checking availability…
+                </p>
+              )}
+              {nameStatus === "available" && (
+                <p className="flex items-center gap-1.5 text-sm text-emerald-600">
+                  <Check className="size-3.5" />
+                  {nameMessage}
+                </p>
+              )}
+              {nameStatus === "taken" && (
+                <p className="flex items-center gap-1.5 text-sm text-destructive">
+                  <X className="size-3.5" />
+                  {nameMessage}
+                </p>
+              )}
+              {nameStatus === "error" && (
+                <p className="text-sm text-muted-foreground">{nameMessage}</p>
+              )}
+            </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="tier">
-              Tier<span className="text-destructive">*</span>
-            </Label>
-            <Select
-              name="tier"
-              required
-              value={tier}
-              onValueChange={(value) => setTier(value ?? "")}
-            >
-              <SelectTrigger id="tier" className="w-full">
-                <SelectValue placeholder="Select a tier">
-                  {(value: string) =>
-                    TEAM_TIERS.find((option) => String(option.value) === value)
-                      ?.label ?? "Select a tier"
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {TEAM_TIERS.map((tier) => (
-                  <SelectItem key={tier.value} value={String(tier.value)}>
-                    {tier.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="tier">
+                Tier<span className="text-destructive">*</span>
+              </Label>
+              <Select
+                name="tier"
+                required
+                value={tier}
+                onValueChange={(value) => setTier(value ?? "")}
+              >
+                <SelectTrigger id="tier" className="w-full">
+                  <SelectValue placeholder="Select a tier">
+                    {(value: string) =>
+                      TEAM_TIERS.find((option) => String(option.value) === value)
+                        ?.label ?? "Select a tier"
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {TEAM_TIERS.map((tier) => (
+                    <SelectItem key={tier.value} value={String(tier.value)}>
+                      {tier.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="jerseyId">
-              Jersey<span className="text-destructive">*</span>
-            </Label>
-            <Select
-              name="jerseyId"
-              required
-              value={jerseyId}
-              onValueChange={(value) => setJerseyId(value ?? "")}
-            >
-              <SelectTrigger id="jerseyId" className="w-full">
-                <SelectValue placeholder="Select a jersey">
-                  {(value: string) =>
-                    jerseys.find((jersey) => String(jersey.id) === value)
-                      ?.kit_name ?? "Select a jersey"
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {jerseys.map((jersey) => (
-                  <SelectItem key={jersey.id} value={String(jersey.id)}>
-                    {jersey.kit_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="jerseyId">
+                Jersey<span className="text-destructive">*</span>
+              </Label>
+              <Select
+                name="jerseyId"
+                required
+                value={jerseyId}
+                onValueChange={(value) => setJerseyId(value ?? "")}
+              >
+                <SelectTrigger id="jerseyId" className="w-full">
+                  <SelectValue placeholder="Select a jersey">
+                    {(value: string) =>
+                      jerseys.find((jersey) => String(jersey.id) === value)
+                        ?.kit_name ?? "Select a jersey"
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {jerseys.map((jersey) => (
+                    <SelectItem key={jersey.id} value={String(jersey.id)}>
+                      {jersey.kit_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="positionId">
-              Position<span className="text-destructive">*</span>
-            </Label>
-            <Select
-              name="positionId"
-              required
-              value={positionId}
-              onValueChange={(value) => setPositionId(value ?? "")}
-            >
-              <SelectTrigger id="positionId" className="w-full">
-                <SelectValue placeholder="Select your position">
-                  {(value: string) =>
-                    positions.find((position) => String(position.id) === value)
-                      ?.name ?? "Select your position"
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {positions.map((position) => (
-                  <SelectItem key={position.id} value={String(position.id)}>
-                    {position.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {state.error && (
-            <p className="text-sm text-destructive">{state.error}</p>
-          )}
-
-          <Button
-            type="submit"
-            disabled={
-              pending ||
-              !isFormFilled ||
-              !meetsNameRequirements ||
-              nameStatus === "checking" ||
-              nameStatus === "taken"
-            }
-          >
-            {pending ? "Creating…" : "Create team"}
-          </Button>
-        </form>
+            <Button type="submit" disabled={!canContinue}>
+              Next
+            </Button>
+          </form>
+        ) : (
+          <PositionForm
+            positions={positions}
+            positionId={positionId}
+            onPositionChangeAction={setPositionId}
+            teamDetails={{ name: trimmedName, tier, jerseyId }}
+            formAction={formAction}
+            pending={pending}
+            error={state.error}
+            onBackAction={() => setStep("details")}
+          />
+        )}
       </CardContent>
     </Card>
   );
