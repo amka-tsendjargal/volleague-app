@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
+import { authErrorMessage } from '@/lib/auth-errors'
 import { readString, readTrimmed } from '@/lib/form-data'
 import { createClient } from '@/lib/supabase/server'
 
@@ -64,7 +65,12 @@ export async function signup(
   })
 
   if (error) {
-    return { error: error.message }
+    return {
+      error: authErrorMessage(
+        error,
+        'Could not create your account right now. Please try again.'
+      ),
+    }
   }
 
   // The root layout renders the signed-in name, so the client's cached copy of

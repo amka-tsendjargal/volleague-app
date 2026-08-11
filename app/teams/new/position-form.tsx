@@ -32,7 +32,12 @@ export function PositionForm({
   positions: Position[];
   positionId: string;
   onPositionChangeAction: (value: string) => void;
-  teamDetails: { name: string; tier: string; jerseyId: string };
+  teamDetails: {
+    name: string;
+    seasonId: string;
+    tierId: string;
+    jerseyId: string;
+  };
   formAction: (formData: FormData) => void;
   pending: boolean;
   error?: string;
@@ -41,7 +46,8 @@ export function PositionForm({
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="name" value={teamDetails.name} />
-      <input type="hidden" name="tier" value={teamDetails.tier} />
+      <input type="hidden" name="seasonId" value={teamDetails.seasonId} />
+      <input type="hidden" name="tierId" value={teamDetails.tierId} />
       <input type="hidden" name="jerseyId" value={teamDetails.jerseyId} />
 
       <div className="flex flex-col gap-2">

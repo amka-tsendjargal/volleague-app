@@ -47,11 +47,18 @@ export async function createTeam(
   formData: FormData
 ): Promise<CreateTeamState> {
   const name = String(formData.get("name") ?? "").trim();
-  const tier = Number(formData.get("tier"));
+  const seasonId = Number(formData.get("seasonId"));
+  const tierId = Number(formData.get("tierId"));
   const jerseyId = Number(formData.get("jerseyId"));
   const positionId = Number(formData.get("positionId"));
 
-  const validationError = validateTeamInput(name, tier, jerseyId, positionId);
+  const validationError = validateTeamInput(
+    name,
+    seasonId,
+    tierId,
+    jerseyId,
+    positionId
+  );
   if (validationError) {
     return { error: validationError };
   }
@@ -75,12 +82,22 @@ export async function createTeam(
   // The captain is taken from the session inside the function, not passed.
   const { error } = await supabase.rpc("create_team_with_captain", {
     team_name: name,
-    team_tier: tier,
+    team_season_id: seasonId,
+    team_tier_id: tierId,
     team_jersey_id: jerseyId,
     team_position_id: positionId,
   });
 
   if (error) {
+    // The form only offers open seasons and tiers they run, so these mean
+    // the season filled or closed while the page was sitting open — worth
+    // saying plainly rather than as a generic failure.
+    if (error.code === "23514") {
+      return { error: "That tier just filled up. Try another tier." };
+    }
+    if (error.code === "55000") {
+      return { error: "That season is no longer open for registration." };
+    }
     return { error: "Could not create the team. Please try again." };
   }
 

@@ -40,6 +40,15 @@ insert into auth.users (
 )
 on conflict (id) do nothing;
 
+-- Makes the sample player an admin. Nothing under /admin renders without
+-- it — is_admin() gates the layout — so without this there is no way to
+-- create a season locally, and no way for any team to exist.
+insert into public.user_roles (user_id, role_id)
+select
+  '11111111-1111-1111-1111-111111111111'::uuid,
+  (select id from public.roles where role = 'admin')
+on conflict (user_id, role_id) do nothing;
+
 -- ============================================================
 -- Sample jerseys
 -- No unique constraint on kit_name, so guard with not exists instead of
@@ -54,22 +63,12 @@ where not exists (
 );
 
 -- ============================================================
--- Sample team
--- The team details page needs a team with a real roster to show. No
--- unique constraint on teams.name, so guard with not exists.
--- ============================================================
-
-insert into public.teams (name, tier, jersey_id)
-select
-  'Suck My Dig',
-  1,
-  (select id from public.jerseys where kit_name = 'Alternate White')
-where not exists (
-  select 1 from public.teams where name = 'Suck My Dig'
-);
-
--- ============================================================
--- Sample roster
+-- Sample players
+-- No sample team or roster: teams.season_id is NOT NULL, and seeding a
+-- season would take away the chance to exercise the create-season flow
+-- against an empty database. Create a season, open registration, and
+-- build a team from these accounts instead.
+--
 -- Inserted through auth.users so on_auth_user_created builds the
 -- matching public.users rows, same as the sample player above. Fixed
 -- ids keep the roster stable across repeated resets.
@@ -106,25 +105,6 @@ from (values
   ('77777777-7777-7777-7777-777777777777'::uuid, 'danny.player@volleague.test',   'Danny',   'Player')
 ) as player(id, email, first_name, last_name)
 on conflict (id) do nothing;
-
--- Sam Player is included so a freshly reset team still has its captain;
--- the other six are regular players.
-insert into public.team_users (user_id, team_id, position_id, is_captain)
-select
-  member.user_id,
-  (select id from public.teams where name = 'Suck My Dig'),
-  (select id from public.positions where name = member.position),
-  member.is_captain
-from (values
-  ('11111111-1111-1111-1111-111111111111'::uuid, 'Opposite',       true),
-  ('22222222-2222-2222-2222-222222222222'::uuid, 'Setter',         false),
-  ('33333333-3333-3333-3333-333333333333'::uuid, 'Outside Hitter', false),
-  ('44444444-4444-4444-4444-444444444444'::uuid, 'Outside Hitter', false),
-  ('55555555-5555-5555-5555-555555555555'::uuid, 'Middle Blocker', false),
-  ('66666666-6666-6666-6666-666666666666'::uuid, 'Middle Blocker', false),
-  ('77777777-7777-7777-7777-777777777777'::uuid, 'Libero',         false)
-) as member(user_id, position, is_captain)
-on conflict (team_id, user_id) do nothing;
 
 -- ============================================================
 -- Email identities for the seeded accounts
