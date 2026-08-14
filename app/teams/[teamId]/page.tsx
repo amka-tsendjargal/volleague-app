@@ -1,9 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { TEAM_TIERS } from "@/lib/constants";
 
-// Shape returned by PostgREST, so these stay snake_case.
+// Shapes returned by PostgREST, so these stay snake_case.
+type TeamRow = {
+  id: number;
+  name: string;
+  tiers: { name: string } | null;
+};
+
 type TeamUserRow = {
   id: number;
   is_captain: boolean;
@@ -28,7 +33,7 @@ export default async function TeamDetailsPage({
 
   const { data: team, error: teamError } = await supabase
     .from("teams")
-    .select("id, name, tier")
+    .select("id, name, tiers(name)")
     .eq("id", id)
     .maybeSingle();
 
@@ -68,7 +73,9 @@ export default async function TeamDetailsPage({
     }))
     .sort((playerA, playerB) => playerA.name.localeCompare(playerB.name));
 
-  const tierLabel = TEAM_TIERS.find((tier) => tier.value === team.tier)?.label;
+  // PostgREST returns a single object for a many-to-one embed; supabase-js
+  // infers an array without generated database types.
+  const tierName = (team as unknown as TeamRow).tiers?.name;
 
   return (
     <div className="flex flex-1 justify-center bg-zinc-50 px-4 py-16 dark:bg-black">
@@ -83,8 +90,8 @@ export default async function TeamDetailsPage({
           <h1 className="text-2xl font-semibold tracking-tight text-black dark:text-zinc-50">
             {team.name}
           </h1>
-          {tierLabel && (
-            <p className="text-sm text-muted-foreground">{tierLabel}</p>
+          {tierName && (
+            <p className="text-sm text-muted-foreground">{tierName}</p>
           )}
         </div>
 

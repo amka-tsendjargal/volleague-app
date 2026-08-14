@@ -139,7 +139,7 @@ describe('signup action', () => {
     expect(mockRevalidatePath).not.toHaveBeenCalled()
   })
 
-  it('returns the Supabase error message and does not redirect', async () => {
+  it('returns our copy for a duplicate account and does not redirect', async () => {
     signUpMock.mockResolvedValue({
       data: {},
       error: { message: 'User already registered' },
@@ -147,7 +147,23 @@ describe('signup action', () => {
 
     const result = await signup(prevState, buildFormData(validFields))
 
-    expect(result).toEqual({ error: 'User already registered' })
+    expect(result).toEqual({
+      error: 'An account with that email already exists.',
+    })
     expect(mockRedirect).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [{ message: 'An invalid response was received from the upstream server' }],
+    [{ message: '' }],
+    [{}],
+  ])('falls back to readable copy for %p', async (error) => {
+    signUpMock.mockResolvedValue({ data: {}, error })
+
+    const result = await signup(prevState, buildFormData(validFields))
+
+    expect(result).toEqual({
+      error: 'Could not create your account right now. Please try again.',
+    })
   })
 })

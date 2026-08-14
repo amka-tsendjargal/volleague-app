@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { ChevronRightIcon, ImageIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { TEAM_TIERS } from "@/lib/constants";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 
+// Shape returned by PostgREST, so these stay snake_case.
 type Team = {
   id: number;
   name: string;
-  tier: number;
+  tier_id: number;
+  tiers: { name: string } | null;
 };
 
 export default async function TeamsPage() {
@@ -15,15 +16,24 @@ export default async function TeamsPage() {
 
   const { data: teams } = await supabase
     .from("teams")
-    .select("id, name, tier")
+    .select("id, name, tier_id, tiers(name)")
+    .order("tier_id")
     .order("name");
 
-  const allTeams = (teams as Team[] | null) ?? [];
-  const tierSections = TEAM_TIERS.map((tier) => ({
-    key: tier.value,
-    label: tier.label,
-    teams: allTeams.filter((team) => team.tier === tier.value),
-  })).filter((section) => section.teams.length > 0);
+  // Already ordered by tier, so a section break is just a change of tier_id.
+  const tierSections: { key: number; label: string; teams: Team[] }[] = [];
+  for (const team of (teams as Team[] | null) ?? []) {
+    const section = tierSections.at(-1);
+    if (section?.key === team.tier_id) {
+      section.teams.push(team);
+    } else {
+      tierSections.push({
+        key: team.tier_id,
+        label: team.tiers?.name ?? "",
+        teams: [team],
+      });
+    }
+  }
 
   return (
     <div className="flex flex-1 justify-center bg-zinc-50 px-4 py-16 dark:bg-black">

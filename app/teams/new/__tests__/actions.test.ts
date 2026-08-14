@@ -83,7 +83,8 @@ function buildFormData(fields: Record<string, string>): FormData {
 
 const validFields = {
   name: 'Spikers',
-  tier: '1',
+  seasonId: '1',
+  tierId: '1',
   jerseyId: '1',
   positionId: '1',
 }
@@ -189,7 +190,8 @@ describe('createTeam', () => {
 
     expect(rpcMock).toHaveBeenCalledWith('create_team_with_captain', {
       team_name: 'Spikers',
-      team_tier: 1,
+      team_season_id: 1,
+      team_tier_id: 1,
       team_jersey_id: 1,
       team_position_id: 1,
     })
@@ -206,6 +208,33 @@ describe('createTeam', () => {
     expect(mockRevalidatePath).not.toHaveBeenCalled()
   })
 
+  // The form only ever offers open seasons and the tiers they run, so these
+  // two mean the season changed under a page that was left sitting open.
+  it('reports a filled tier distinctly from a generic failure', async () => {
+    mockSupabase({
+      rpc: { data: null, error: { code: '23514', message: 'that tier is full' } },
+    })
+
+    const result = await createTeam(prevState, buildFormData(validFields))
+
+    expect(result).toEqual({ error: 'That tier just filled up. Try another tier.' })
+  })
+
+  it('reports a season that closed to registration', async () => {
+    mockSupabase({
+      rpc: {
+        data: null,
+        error: { code: '55000', message: 'not open for registration' },
+      },
+    })
+
+    const result = await createTeam(prevState, buildFormData(validFields))
+
+    expect(result).toEqual({
+      error: 'That season is no longer open for registration.',
+    })
+  })
+
   it('creates the team and its captain in a single call on success', async () => {
     const { rpcMock } = mockSupabase({ rpc: { data: 7, error: null } })
 
@@ -216,7 +245,8 @@ describe('createTeam', () => {
     expect(rpcMock).toHaveBeenCalledTimes(1)
     expect(rpcMock).toHaveBeenCalledWith('create_team_with_captain', {
       team_name: 'Spikers',
-      team_tier: 1,
+      team_season_id: 1,
+      team_tier_id: 1,
       team_jersey_id: 1,
       team_position_id: 1,
     })

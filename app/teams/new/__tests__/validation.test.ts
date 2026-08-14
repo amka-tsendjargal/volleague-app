@@ -1,30 +1,30 @@
 import { getNameLengthError, validateTeamInput } from '../validation'
 
-// A fully-valid baseline; each test overrides just the field under scrutiny.
-function validInput(overrides: Partial<{
+type TeamInput = {
   name: string
-  tier: number
+  seasonId: number
+  tierId: number
   jerseyId: number
   positionId: number
-}> = {}) {
-  const input = {
+}
+
+// A fully-valid baseline; each test overrides just the field under scrutiny.
+function validate(overrides: Partial<TeamInput> = {}) {
+  const input: TeamInput = {
     name: 'Spikers',
-    tier: 1,
+    seasonId: 1,
+    tierId: 1,
     jerseyId: 1,
     positionId: 1,
     ...overrides,
   }
-  return input
-}
-
-function validate(overrides: Partial<{
-  name: string
-  tier: number
-  jerseyId: number
-  positionId: number
-}> = {}) {
-  const input = validInput(overrides)
-  return validateTeamInput(input.name, input.tier, input.jerseyId, input.positionId)
+  return validateTeamInput(
+    input.name,
+    input.seasonId,
+    input.tierId,
+    input.jerseyId,
+    input.positionId
+  )
 }
 
 describe('getNameLengthError', () => {
@@ -79,21 +79,32 @@ describe('validateTeamInput', () => {
     })
   })
 
-  describe('tier', () => {
-    it.each([1, 2])('accepts a valid tier %p', (tier) => {
-      expect(validate({ tier })).toBeNull()
-    })
+  // seasonId and tierId are foreign keys now, so the database rejects a
+  // value that isn't a real season, or a tier that season doesn't run.
+  // These only cover an empty or unparseable selection.
+  describe('seasonId', () => {
+    it.each([0, -1, 1.5, Number.NaN])(
+      'flags an invalid seasonId %p',
+      (seasonId) => {
+        expect(validate({ seasonId })).toBe('Choose a season.')
+      }
+    )
 
-    it('flags a tier outside the known set', () => {
-      expect(validate({ tier: 3 })).toBe('Choose a valid tier.')
+    it('accepts a positive integer seasonId', () => {
+      expect(validate({ seasonId: 2 })).toBeNull()
     })
+  })
 
-    it('flags a NaN tier (unparseable selection)', () => {
-      expect(validate({ tier: Number('abc') })).toBe('Choose a valid tier.')
-    })
+  describe('tierId', () => {
+    it.each([0, -1, 1.5, Number.NaN])(
+      'flags an invalid tierId %p',
+      (tierId) => {
+        expect(validate({ tierId })).toBe('Choose a tier.')
+      }
+    )
 
-    it('flags a missing tier (empty selection parses to 0)', () => {
-      expect(validate({ tier: Number('') })).toBe('Choose a valid tier.')
+    it('accepts a positive integer tierId', () => {
+      expect(validate({ tierId: 3 })).toBeNull()
     })
   })
 
@@ -124,8 +135,8 @@ describe('validateTeamInput', () => {
   })
 
   it('reports only the first error found, in check order', () => {
-    // Name too short AND an invalid tier: the length error wins.
-    expect(validate({ name: 'ab', tier: 99 })).toBe(
+    // Name too short AND an unselected tier: the length error wins.
+    expect(validate({ name: 'ab', tierId: 0 })).toBe(
       'Team name must be at least 3 characters.'
     )
   })
