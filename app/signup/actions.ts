@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 
 import { authErrorMessage } from '@/lib/auth-errors'
 import { readString, readTrimmed } from '@/lib/form-data'
+import { safeRedirectPath } from '@/lib/safe-redirect'
 import { createClient } from '@/lib/supabase/server'
 
 import {
@@ -79,6 +80,7 @@ export async function signup(
   revalidatePath('/', 'layout')
 
   // Email confirmations are disabled (supabase/config.toml), so signUp returns
-  // an active session and the user is signed in. Send them into the app.
-  redirect('/')
+  // an active session and the user is signed in. Send them where they were
+  // headed before the login wall, if anywhere on this site.
+  redirect(safeRedirectPath(readString(formData, 'next')))
 }

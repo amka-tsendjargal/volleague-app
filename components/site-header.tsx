@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { logout } from "@/app/logout/actions";
 import { Button } from "@/components/ui/button";
+import { ThemePicker } from "@/components/theme-picker";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -47,22 +48,26 @@ export async function SiteHeader() {
         render={<Link href="/">Home</Link>}
       />
 
-      {user && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Signed in as</span>
-          <span className="text-sm font-medium text-black dark:text-zinc-50">
-            {displayName}
-          </span>
-          {/* A plain form rather than a link: signing out is a mutation, so it
-              must not be reachable by a GET (a prefetch or a crawler would
-              fire it). */}
-          <form action={logout}>
-            <Button type="submit" variant="outline" size="sm">
-              Log out
-            </Button>
-          </form>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <ThemePicker />
+
+        {user && (
+          <>
+            <span className="text-sm text-muted-foreground">Signed in as</span>
+            <span className="text-sm font-medium text-black dark:text-zinc-50">
+              {displayName}
+            </span>
+            {/* A plain form rather than a link: signing out is a mutation, so
+                it must not be reachable by a GET (a prefetch or a crawler
+                would fire it). */}
+            <form action={logout}>
+              <Button type="submit" variant="outline" size="sm">
+                Log out
+              </Button>
+            </form>
+          </>
+        )}
+      </div>
     </header>
   );
 }

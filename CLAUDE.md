@@ -31,3 +31,7 @@ JOIN jerseys j ON jp.jersey_id = j.id
 ```
 
 This applies to all clauses (SELECT, JOIN, WHERE, ORDER BY, etc.) — always reference columns using the full table name, not an alias.
+
+## Default working style
+
+Invoke the `ponytail` skill at the start of every session, before the first code change.

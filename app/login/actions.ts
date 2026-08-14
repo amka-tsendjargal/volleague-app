@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 
 import { authErrorMessage } from '@/lib/auth-errors'
 import { readString, readTrimmed } from '@/lib/form-data'
+import { safeRedirectPath } from '@/lib/safe-redirect'
 import { createClient } from '@/lib/supabase/server'
 
 import {
@@ -64,5 +65,6 @@ export async function login(
   // header would keep rendering the logged-out state until a full reload.
   revalidatePath('/', 'layout')
 
-  redirect('/')
+  // Where they were headed before the login wall, if anywhere on this site.
+  redirect(safeRedirectPath(readString(formData, 'next')))
 }

@@ -9,8 +9,16 @@ type SeasonRow = {
   season_tiers: { tier_id: number; tiers: { name: string } | null }[];
 };
 
-export default async function NewTeamPage() {
+export default async function NewTeamPage({
+  searchParams,
+}: {
+  // ?seasonId=&tierId= preselect the season and tier, so the home page banner
+  // can link straight into the form. Unvalidated here: the form ignores ids
+  // that aren't among the open seasons and tiers it was handed.
+  searchParams: Promise<{ seasonId?: string; tierId?: string }>;
+}) {
   const supabase = await createClient();
+  const { seasonId, tierId } = await searchParams;
 
   // Creating a team makes you its captain, so there has to be a "you".
   // createTeam re-checks; this just keeps signed-out visitors from filling
@@ -20,7 +28,14 @@ export default async function NewTeamPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/login");
+    // Rebuilt rather than passed through, so logging in returns to this form
+    // with the same season and tier still chosen.
+    const params = new URLSearchParams();
+    if (seasonId) params.set("seasonId", seasonId);
+    if (tierId) params.set("tierId", tierId);
+    const query = params.size > 0 ? `?${params}` : "";
+
+    redirect(`/login?next=${encodeURIComponent(`/teams/new${query}`)}`);
   }
 
   // Only seasons taking registrations, and only the tiers each one runs —
@@ -58,6 +73,8 @@ export default async function NewTeamPage() {
           seasons={openSeasons}
           jerseys={jerseys ?? []}
           positions={positions ?? []}
+          preselectedSeasonId={seasonId}
+          preselectedTierId={tierId}
         />
       )}
     </div>

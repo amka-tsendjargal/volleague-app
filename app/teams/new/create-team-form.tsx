@@ -78,10 +78,14 @@ export function CreateTeamForm({
   seasons,
   jerseys,
   positions,
+  preselectedSeasonId,
+  preselectedTierId,
 }: {
   seasons: Season[];
   jerseys: Jersey[];
   positions: Position[];
+  preselectedSeasonId?: string;
+  preselectedTierId?: string;
 }) {
   const [state, formAction, pending] = useActionState(
     createTeam,
@@ -95,11 +99,22 @@ export function CreateTeamForm({
   const [name, setName] = useState("");
   const [nameStatus, setNameStatus] = useState<NameStatus>("idle");
   const [nameMessage, setNameMessage] = useState<string | null>(null);
-  // Preselected when there's only one season open, which is the usual case.
+  // Preselected from the ?seasonId=&tierId= link, or when there's only one
+  // season open — the usual case. Ids that aren't on offer fall through to no
+  // selection rather than putting a dead value in the Select, and the tier
+  // only survives if the preselected season actually runs it.
+  const linkedSeason =
+    seasons.find((season) => String(season.id) === preselectedSeasonId) ??
+    (seasons.length === 1 ? seasons[0] : undefined);
+
   const [seasonId, setSeasonId] = useState(
-    seasons.length === 1 ? String(seasons[0].id) : ""
+    linkedSeason ? String(linkedSeason.id) : ""
   );
-  const [tierId, setTierId] = useState("");
+  const [tierId, setTierId] = useState(
+    linkedSeason?.tiers.some((tier) => String(tier.id) === preselectedTierId)
+      ? preselectedTierId!
+      : ""
+  );
   const [jerseyId, setJerseyId] = useState("");
   const [positionId, setPositionId] = useState("");
 
