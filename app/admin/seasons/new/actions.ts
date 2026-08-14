@@ -56,7 +56,6 @@ export async function createSeason(
   // The layout already redirects non-admins; this catches a direct POST,
   // which Server Actions are reachable by.
   const { data: isAdmin } = await supabase.rpc("is_admin");
-  console.log(isAdmin);
   if (!isAdmin) {
     return { error: "Only an admin can create a season." };
   }
