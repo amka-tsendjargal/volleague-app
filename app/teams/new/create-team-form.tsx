@@ -8,11 +8,7 @@ import {
   checkTeamNameAvailability,
   type CreateTeamState,
 } from "./actions";
-import {
-  TEAM_TIERS,
-  MIN_TEAM_NAME_LENGTH,
-  TEAM_NAME_PATTERN,
-} from "@/lib/constants";
+import { MIN_TEAM_NAME_LENGTH, TEAM_NAME_PATTERN } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +30,8 @@ import { Progress, ProgressLabel } from "@/components/ui/progress";
 import { toast } from "@/components/ui/toast";
 import { PositionForm, type Position } from "./position-form";
 
+type Tier = { id: number; name: string };
+type Season = { id: number; name: string; tiers: Tier[] };
 type Jersey = { id: number; kit_name: string };
 
 type NameStatus = "idle" | "checking" | "available" | "taken" | "error";
@@ -77,11 +75,17 @@ function NameRequirement({
 }
 
 export function CreateTeamForm({
+  seasons,
   jerseys,
   positions,
+  preselectedSeasonId,
+  preselectedTierId,
 }: {
+  seasons: Season[];
   jerseys: Jersey[];
   positions: Position[];
+  preselectedSeasonId?: string;
+  preselectedTierId?: string;
 }) {
   const [state, formAction, pending] = useActionState(
     createTeam,
@@ -95,9 +99,27 @@ export function CreateTeamForm({
   const [name, setName] = useState("");
   const [nameStatus, setNameStatus] = useState<NameStatus>("idle");
   const [nameMessage, setNameMessage] = useState<string | null>(null);
-  const [tier, setTier] = useState("");
+  // Preselected from the ?seasonId=&tierId= link, or when there's only one
+  // season open — the usual case. Ids that aren't on offer fall through to no
+  // selection rather than putting a dead value in the Select, and the tier
+  // only survives if the preselected season actually runs it.
+  const linkedSeason =
+    seasons.find((season) => String(season.id) === preselectedSeasonId) ??
+    (seasons.length === 1 ? seasons[0] : undefined);
+
+  const [seasonId, setSeasonId] = useState(
+    linkedSeason ? String(linkedSeason.id) : ""
+  );
+  const [tierId, setTierId] = useState(
+    linkedSeason?.tiers.some((tier) => String(tier.id) === preselectedTierId)
+      ? preselectedTierId!
+      : ""
+  );
   const [jerseyId, setJerseyId] = useState("");
   const [positionId, setPositionId] = useState("");
+
+  const availableTiers =
+    seasons.find((season) => String(season.id) === seasonId)?.tiers ?? [];
 
   const trimmedName = name.trim();
   const hasMinLength = trimmedName.length >= MIN_TEAM_NAME_LENGTH;
@@ -107,7 +129,8 @@ export function CreateTeamForm({
 
   const canContinue =
     trimmedName.length > 0 &&
-    tier !== "" &&
+    seasonId !== "" &&
+    tierId !== "" &&
     jerseyId !== "" &&
     meetsNameRequirements &&
     nameStatus !== "checking" &&
@@ -273,27 +296,60 @@ export function CreateTeamForm({
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="tier">
-                Tier<span className="text-destructive">*</span>
+              <Label htmlFor="seasonId">
+                Season<span className="text-destructive">*</span>
               </Label>
               <Select
-                name="tier"
+                name="seasonId"
                 required
-                value={tier}
-                onValueChange={(value) => setTier(value ?? "")}
+                value={seasonId}
+                onValueChange={(value) => {
+                  setSeasonId(value ?? "");
+                  // Tiers are per-season, so the old pick may not be offered.
+                  setTierId("");
+                }}
               >
-                <SelectTrigger id="tier" className="w-full">
-                  <SelectValue placeholder="Select a tier">
+                <SelectTrigger id="seasonId" className="w-full">
+                  <SelectValue placeholder="Select a season">
                     {(value: string) =>
-                      TEAM_TIERS.find((option) => String(option.value) === value)
-                        ?.label ?? "Select a tier"
+                      seasons.find((season) => String(season.id) === value)
+                        ?.name ?? "Select a season"
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {TEAM_TIERS.map((tier) => (
-                    <SelectItem key={tier.value} value={String(tier.value)}>
-                      {tier.label}
+                  {seasons.map((season) => (
+                    <SelectItem key={season.id} value={String(season.id)}>
+                      {season.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="tierId">
+                Tier<span className="text-destructive">*</span>
+              </Label>
+              <Select
+                name="tierId"
+                required
+                disabled={seasonId === ""}
+                value={tierId}
+                onValueChange={(value) => setTierId(value ?? "")}
+              >
+                <SelectTrigger id="tierId" className="w-full">
+                  <SelectValue placeholder="Select a tier">
+                    {(value: string) =>
+                      availableTiers.find((tier) => String(tier.id) === value)
+                        ?.name ?? "Select a tier"
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {availableTiers.map((tier) => (
+                    <SelectItem key={tier.id} value={String(tier.id)}>
+                      {tier.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -337,7 +393,7 @@ export function CreateTeamForm({
             positions={positions}
             positionId={positionId}
             onPositionChangeAction={setPositionId}
-            teamDetails={{ name: trimmedName, tier, jerseyId }}
+            teamDetails={{ name: trimmedName, seasonId, tierId, jerseyId }}
             formAction={formAction}
             pending={pending}
             error={state.error}

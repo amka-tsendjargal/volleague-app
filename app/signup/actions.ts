@@ -3,7 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
+import { authErrorMessage } from '@/lib/auth-errors'
 import { readString, readTrimmed } from '@/lib/form-data'
+import { safeRedirectPath } from '@/lib/safe-redirect'
 import { createClient } from '@/lib/supabase/server'
 
 import {
@@ -64,7 +66,12 @@ export async function signup(
   })
 
   if (error) {
-    return { error: error.message }
+    return {
+      error: authErrorMessage(
+        error,
+        'Could not create your account right now. Please try again.'
+      ),
+    }
   }
 
   // The root layout renders the signed-in name, so the client's cached copy of
@@ -73,6 +80,7 @@ export async function signup(
   revalidatePath('/', 'layout')
 
   // Email confirmations are disabled (supabase/config.toml), so signUp returns
-  // an active session and the user is signed in. Send them into the app.
-  redirect('/')
+  // an active session and the user is signed in. Send them where they were
+  // headed before the login wall, if anywhere on this site.
+  redirect(safeRedirectPath(readString(formData, 'next')))
 }

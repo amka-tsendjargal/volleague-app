@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { ThemePicker } from "@/components/theme-picker";
 import { UserMenu } from "@/components/user-menu";
 import { AVATAR_BUCKET } from "@/lib/constants";
 import { getInitials } from "@/lib/profile";
@@ -58,7 +59,11 @@ export async function SiteHeader() {
         render={<Link href="/">Home</Link>}
       />
 
-      {user && <UserMenu avatarUrl={avatarUrl} initials={initials} />}
+      <div className="flex items-center gap-2">
+        <ThemePicker />
+
+        {user && <UserMenu avatarUrl={avatarUrl} initials={initials} />}
+      </div>
     </header>
   );
 }

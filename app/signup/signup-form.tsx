@@ -49,7 +49,7 @@ function PasswordRequirement({
   );
 }
 
-export function SignupForm() {
+export function SignupForm({ next }: { next?: string }) {
   const [state, formAction, pending] = useActionState(signup, initialState);
 
   const [firstName, setFirstName] = useState("");
@@ -90,6 +90,9 @@ export function SignupForm() {
       </CardHeader>
       <CardContent>
         <form action={formAction} className="flex flex-col gap-4">
+          {/* Server Actions can't see the URL, so the destination rides
+              along in the POST body. */}
+          <input type="hidden" name="next" value={next ?? ""} />
           <div className="flex flex-col gap-2">
             <Label htmlFor="firstName">
               First name<span className="text-destructive">*</span>
@@ -214,7 +217,12 @@ export function SignupForm() {
       <CardFooter>
         <p className="text-sm text-muted-foreground">
           Already have an account?{" "}
-          <Link href="/login" className="underline underline-offset-4">
+          {/* Carries the destination across, so bouncing to login doesn't
+              lose where they were going. */}
+          <Link
+            href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}
+            className="underline underline-offset-4"
+          >
             Log in
           </Link>
         </p>

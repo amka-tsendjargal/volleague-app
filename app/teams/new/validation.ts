@@ -5,13 +5,7 @@
 // it separate also means these rules can be unit-tested without touching
 // Next.js or Supabase.
 
-import {
-  MIN_TEAM_NAME_LENGTH,
-  TEAM_NAME_PATTERN,
-  TEAM_TIERS,
-} from "@/lib/constants";
-
-const validTiers = new Set<number>(TEAM_TIERS.map((tier) => tier.value));
+import { MIN_TEAM_NAME_LENGTH, TEAM_NAME_PATTERN } from "@/lib/constants";
 
 export function getNameLengthError(name: string): string | null {
   if (name.length < MIN_TEAM_NAME_LENGTH) {
@@ -27,7 +21,8 @@ export function getNameLengthError(name: string): string | null {
  */
 export function validateTeamInput(
   name: string,
-  tier: number,
+  seasonId: number,
+  tierId: number,
   jerseyId: number,
   positionId: number
 ): string | null {
@@ -41,8 +36,15 @@ export function validateTeamInput(
   if (!TEAM_NAME_PATTERN.test(name)) {
     return "Team name can only contain letters, numbers, and spaces.";
   }
-  if (!validTiers.has(tier)) {
-    return "Choose a valid tier.";
+  // tier_id, season_id, jersey_id and position_id are all foreign keys, so
+  // the database rejects anything that isn't a real row — including a tier
+  // the chosen season doesn't offer. These only catch an empty or garbled
+  // selection before the round trip.
+  if (!Number.isInteger(seasonId) || seasonId <= 0) {
+    return "Choose a season.";
+  }
+  if (!Number.isInteger(tierId) || tierId <= 0) {
+    return "Choose a tier.";
   }
   if (!Number.isInteger(jerseyId) || jerseyId <= 0) {
     return "Choose a jersey.";

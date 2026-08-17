@@ -3,7 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
+import { authErrorMessage } from '@/lib/auth-errors'
 import { readString, readTrimmed } from '@/lib/form-data'
+import { safeRedirectPath } from '@/lib/safe-redirect'
 import { createClient } from '@/lib/supabase/server'
 
 import {
@@ -50,10 +52,12 @@ export async function login(
   })
 
   if (error) {
-    // Supabase collapses "no such user" and "wrong password" into a single
-    // "Invalid login credentials" message, which is what we want to surface:
-    // saying which half was wrong would confirm whether an account exists.
-    return { error: error.message }
+    return {
+      error: authErrorMessage(
+        error,
+        'Could not sign you in right now. Please try again.'
+      ),
+    }
   }
 
   // The root layout renders the signed-in name, so the client's cached copy of
@@ -61,5 +65,6 @@ export async function login(
   // header would keep rendering the logged-out state until a full reload.
   revalidatePath('/', 'layout')
 
-  redirect('/')
+  // Where they were headed before the login wall, if anywhere on this site.
+  redirect(safeRedirectPath(readString(formData, 'next')))
 }

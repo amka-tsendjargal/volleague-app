@@ -134,7 +134,7 @@ describe('login action', () => {
     expect(mockRevalidatePath).not.toHaveBeenCalled()
   })
 
-  it('returns the Supabase error message and does not redirect', async () => {
+  it('returns our copy for bad credentials and does not redirect', async () => {
     signInWithPasswordMock.mockResolvedValue({
       data: {},
       error: { message: 'Invalid login credentials' },
@@ -142,7 +142,23 @@ describe('login action', () => {
 
     const result = await login(prevState, buildFormData(validFields))
 
-    expect(result).toEqual({ error: 'Invalid login credentials' })
+    expect(result).toEqual({ error: "That email or password isn't right." })
     expect(mockRedirect).not.toHaveBeenCalled()
+  })
+
+  // A Kong gateway failure once surfaced as an empty object in the form.
+  // Nothing from the transport reaches the user now.
+  it.each([
+    [{ message: 'An invalid response was received from the upstream server' }],
+    [{ message: '' }],
+    [{}],
+  ])('falls back to readable copy for %p', async (error) => {
+    signInWithPasswordMock.mockResolvedValue({ data: {}, error })
+
+    const result = await login(prevState, buildFormData(validFields))
+
+    expect(result).toEqual({
+      error: 'Could not sign you in right now. Please try again.',
+    })
   })
 })
