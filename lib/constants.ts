@@ -6,6 +6,11 @@ export const MIN_TEAM_NAME_LENGTH = 3;
 // ILIKE wildcard characters (%, _) entirely rather than escaping them.
 export const TEAM_NAME_PATTERN = /^[A-Za-z0-9 ]+$/;
 
+// A team's join code is the first block of a UUID — see the join_code
+// default in supabase/migrations. Shared so the input, the client's "worth
+// checking yet?" test, and the server-side lookup agree on its shape.
+export const JOIN_CODE_LENGTH = 8;
+
 // Six on the court, so a team below this can't field a lineup. A team is
 // "confirmed" — and therefore schedulable — once it reaches this many
 // players; schedule generation ignores the rest.

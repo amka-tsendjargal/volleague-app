@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/card";
 import { Progress, ProgressLabel } from "@/components/ui/progress";
 import { toast } from "@/components/ui/toast";
-import { PositionForm, type Position } from "./position-form";
+import { PositionForm, type Position } from "../position-form";
 
 type Tier = { id: number; name: string };
 type Season = { id: number; name: string; tiers: Tier[] };
@@ -393,11 +393,13 @@ export function CreateTeamForm({
             positions={positions}
             positionId={positionId}
             onPositionChangeAction={setPositionId}
-            teamDetails={{ name: trimmedName, seasonId, tierId, jerseyId }}
+            hiddenFields={{ name: trimmedName, seasonId, tierId, jerseyId }}
             formAction={formAction}
             pending={pending}
             error={state.error}
             onBackAction={() => setStep("details")}
+            submitLabel="Create team"
+            pendingLabel="Creating…"
           />
         )}
       </CardContent>
