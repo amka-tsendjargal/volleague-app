@@ -132,6 +132,13 @@ export default async function Home() {
           variant="outline"
           render={<Link href="/teams/new">Create a Team</Link>}
         />
+        {/* Offered to signed-out visitors too — /teams/join sends them
+            through the login wall and back. */}
+        <Button
+          nativeButton={false}
+          variant="outline"
+          render={<Link href="/teams/join">Join a Team</Link>}
+        />
         <Button
           nativeButton={false}
           variant="outline"
