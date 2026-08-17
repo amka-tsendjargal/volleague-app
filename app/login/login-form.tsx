@@ -18,7 +18,7 @@ import {
 
 const initialState: LoginState = {};
 
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string }) {
   const [state, formAction, pending] = useActionState(login, initialState);
 
   const [email, setEmail] = useState("");
@@ -46,6 +46,9 @@ export function LoginForm() {
       </CardHeader>
       <CardContent>
         <form action={formAction} className="flex flex-col gap-4">
+          {/* Server Actions can't see the URL, so the destination rides
+              along in the POST body. */}
+          <input type="hidden" name="next" value={next ?? ""} />
           <div className="flex flex-col gap-2">
             <Label htmlFor="email">
               Email<span className="text-destructive">*</span>
@@ -101,7 +104,12 @@ export function LoginForm() {
       <CardFooter>
         <p className="text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="underline underline-offset-4">
+          {/* Carries the destination across, so bouncing to signup doesn't
+              lose where they were going. */}
+          <Link
+            href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"}
+            className="underline underline-offset-4"
+          >
             Sign up
           </Link>
         </p>

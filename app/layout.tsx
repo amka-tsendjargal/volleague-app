@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { SiteHeader } from "@/components/site-header";
+import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toast";
 
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
@@ -30,12 +31,18 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // next-themes sets the theme class on <html> via an inline script
+      // before hydration, so the server markup (no class) and first client
+      // render differ by design — this silences that one expected warning.
+      suppressHydrationWarning
       className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", inter.variable)}
     >
       <body className="min-h-full flex flex-col">
-        <SiteHeader />
-        {children}
-        <Toaster />
+        <ThemeProvider>
+          <SiteHeader />
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );
