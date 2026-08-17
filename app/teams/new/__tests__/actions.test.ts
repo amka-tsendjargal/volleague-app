@@ -26,6 +26,7 @@ const SIGNED_IN_USER = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }
 type TableMock = {
   select: (...args: unknown[]) => TableMock
   ilike: (...args: unknown[]) => TableMock
+  eq: (...args: unknown[]) => TableMock
   maybeSingle: () => Promise<Result>
 }
 
@@ -33,6 +34,7 @@ function createTableMock(result: Result): TableMock {
   const builder: TableMock = {
     select: jest.fn(() => builder),
     ilike: jest.fn(() => builder),
+    eq: jest.fn(() => builder),
     maybeSingle: jest.fn(() => Promise.resolve(result)),
   }
 
@@ -41,13 +43,19 @@ function createTableMock(result: Result): TableMock {
 
 function mockSupabase(config: {
   teams?: Result
+  teamUsers?: Result
   rpc?: Result
   user?: { id: string } | null
 } = {}) {
   const teamsTable = createTableMock(config.teams ?? { data: null, error: null })
+  // No existing captaincy unless a test says otherwise.
+  const teamUsersTable = createTableMock(
+    config.teamUsers ?? { data: null, error: null }
+  )
 
   const fromMock = jest.fn((table: string) => {
     if (table === 'teams') return teamsTable
+    if (table === 'team_users') return teamUsersTable
     throw new Error(`Unexpected table: ${table}`)
   })
 
@@ -70,7 +78,7 @@ function mockSupabase(config: {
     auth: { getUser: getUserMock },
   } as unknown as Awaited<ReturnType<typeof createClient>>)
 
-  return { fromMock, rpcMock, getUserMock, teamsTable }
+  return { fromMock, rpcMock, getUserMock, teamsTable, teamUsersTable }
 }
 
 function buildFormData(fields: Record<string, string>): FormData {
@@ -233,6 +241,46 @@ describe('createTeam', () => {
     expect(result).toEqual({
       error: 'That season is no longer open for registration.',
     })
+  })
+
+  it('refuses a second captaincy in the same season, naming that team', async () => {
+    const { rpcMock, teamUsersTable } = mockSupabase({
+      teamUsers: { data: { teams: { id: 4, name: 'Blockers' } }, error: null },
+    })
+
+    const result = await createTeam(prevState, buildFormData(validFields))
+
+    // errorTeam is what lets the form link to the team they already captain.
+    expect(result).toEqual({
+      error: 'You are already the captain of Blockers this season.',
+      errorTeam: { id: 4, name: 'Blockers' },
+    })
+    expect(teamUsersTable.eq).toHaveBeenCalledWith('teams.season_id', 1)
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
+
+  it('allows a captaincy when the existing one is in another season', async () => {
+    // The season_id filter is part of the query, so "another season" comes
+    // back as no row at all rather than as a row this action has to judge.
+    const { rpcMock } = mockSupabase({ teamUsers: { data: null, error: null } })
+
+    const result = await createTeam(prevState, buildFormData(validFields))
+
+    expect(result.success).toBe(true)
+    expect(rpcMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not create the team when the captaincy check fails', async () => {
+    const { rpcMock } = mockSupabase({
+      teamUsers: { data: null, error: { message: 'boom' } },
+    })
+
+    const result = await createTeam(prevState, buildFormData(validFields))
+
+    expect(result).toEqual({
+      error: 'Could not create the team. Please try again.',
+    })
+    expect(rpcMock).not.toHaveBeenCalled()
   })
 
   it('creates the team and its captain in a single call on success', async () => {
