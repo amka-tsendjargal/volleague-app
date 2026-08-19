@@ -397,6 +397,7 @@ export function CreateTeamForm({
             formAction={formAction}
             pending={pending}
             error={state.error}
+            errorTeam={state.errorTeam}
             onBackAction={() => setStep("details")}
           />
         )}

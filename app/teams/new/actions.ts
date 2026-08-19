@@ -6,6 +6,9 @@ import { getNameLengthError, validateTeamInput } from "./validation";
 
 export type CreateTeamState = {
   error?: string;
+  // Set alongside `error` when the block is "you already captain this
+  // season", so the form can link straight to that team.
+  errorTeam?: { id: number; name: string };
   success?: boolean;
   teamName?: string;
 };
@@ -73,6 +76,37 @@ export async function createTeam(
 
   if (!user) {
     return { error: "You must be signed in to create a team." };
+  }
+
+  // Captaining two teams in the same season means being in two places on
+  // the same playing night. Being a regular player on another team in the
+  // season is still fine, and so is captaining in a different season.
+  //
+  // !inner so season_id filters the team_users rows rather than just
+  // nulling out the embed. The team is selected, not just filtered on, so
+  // the error can name it and link to it.
+  const { data: existingCaptaincy, error: captaincyError } = await supabase
+    .from("team_users")
+    .select("teams!inner(id, name)")
+    .eq("user_id", user.id)
+    .eq("is_captain", true)
+    .eq("teams.season_id", seasonId)
+    .maybeSingle();
+
+  if (captaincyError) {
+    return { error: "Could not create the team. Please try again." };
+  }
+
+  // Shape returned by PostgREST for the embed above: one team per row.
+  const captainedTeam = (
+    existingCaptaincy as { teams: { id: number; name: string } | null } | null
+  )?.teams;
+
+  if (captainedTeam) {
+    return {
+      error: `You are already the captain of ${captainedTeam.name} this season.`,
+      errorTeam: captainedTeam,
+    };
   }
 
   // Inserting the team and its captain row are one transaction inside
