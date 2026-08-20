@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
   firstPlayoffWeek,
+  parseCourtNumbers,
   validateSeasonInput,
   type TierCap,
 } from "./validation";
@@ -29,6 +30,9 @@ export async function createSeason(
 ): Promise<CreateSeasonState> {
   const name = String(formData.get("name") ?? "").trim();
   const playoffWeeks = Number(formData.get("playoffWeeks"));
+  const courtNumbers = parseCourtNumbers(
+    String(formData.get("courtNumbers") ?? "")
+  );
 
   // Both arrive as JSON from hidden inputs: week times so the client can
   // convert them to absolute timestamps in the admin's timezone, tier caps
@@ -45,7 +49,8 @@ export async function createSeason(
     name,
     weekTimes,
     playoffWeeks,
-    tierCaps
+    tierCaps,
+    courtNumbers
   );
   if (validationError) {
     return { error: validationError };
@@ -62,7 +67,7 @@ export async function createSeason(
 
   const { data: season, error: seasonError } = await supabase
     .from("seasons")
-    .insert({ name })
+    .insert({ name, court_numbers: courtNumbers })
     .select("id")
     .single();
 

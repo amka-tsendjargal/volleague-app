@@ -1,5 +1,6 @@
 import {
   firstPlayoffWeek,
+  parseCourtNumbers,
   regularWeeksNeeded,
   validateSeasonInput,
   type TierCap,
@@ -10,6 +11,7 @@ type SeasonInput = {
   weekTimes: string[]
   playoffWeeks: number
   tierCaps: TierCap[]
+  courtNumbers: number[]
 }
 
 // A fully-valid baseline; each test overrides just the field under scrutiny.
@@ -23,13 +25,15 @@ function validate(overrides: Partial<SeasonInput> = {}) {
     ],
     playoffWeeks: 1,
     tierCaps: [{ tierId: 1, maxTeams: 10 }],
+    courtNumbers: [1, 2, 3],
     ...overrides,
   }
   return validateSeasonInput(
     input.name,
     input.weekTimes,
     input.playoffWeeks,
-    input.tierCaps
+    input.tierCaps,
+    input.courtNumbers
   )
 }
 
@@ -113,9 +117,52 @@ describe('validateSeasonInput', () => {
     })
   })
 
+  describe('courtNumbers', () => {
+    it('flags a season with no courts', () => {
+      expect(validate({ courtNumbers: [] })).toBe(
+        'Enter at least one court number.'
+      )
+    })
+
+    it.each([0, -2, 1.5, Number.NaN])('flags a court of %p', (courtNumber) => {
+      expect(validate({ courtNumbers: [1, courtNumber] })).toBe(
+        'Court numbers must be whole numbers above zero.'
+      )
+    })
+
+    it('flags the same court listed twice', () => {
+      expect(validate({ courtNumbers: [1, 2, 1] })).toBe(
+        'Each court can only be listed once.'
+      )
+    })
+
+    it('accepts courts that are neither consecutive nor starting at one', () => {
+      expect(validate({ courtNumbers: [3, 4, 7] })).toBeNull()
+    })
+  })
+
   it('reports only the first error found, in check order', () => {
     // Empty name AND no tiers: the name error wins.
     expect(validate({ name: '', tierCaps: [] })).toBe('Enter a season name.')
+  })
+})
+
+describe('parseCourtNumbers', () => {
+  it('splits on commas and trims', () => {
+    expect(parseCourtNumbers('1, 2,3 ')).toEqual([1, 2, 3])
+  })
+
+  it('ignores empty entries, so a trailing comma is harmless', () => {
+    expect(parseCourtNumbers('1,2,')).toEqual([1, 2])
+  })
+
+  it.each(['', '   ', ','])('returns nothing for %p', (raw) => {
+    expect(parseCourtNumbers(raw)).toEqual([])
+  })
+
+  it('keeps non-numeric entries as NaN for validation to report', () => {
+    // Dropping them would quietly schedule onto courts nobody listed.
+    expect(parseCourtNumbers('1,abc')).toEqual([1, Number.NaN])
   })
 })
 describe('regularWeeksNeeded', () => {
