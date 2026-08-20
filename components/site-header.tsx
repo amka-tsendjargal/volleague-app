@@ -51,7 +51,7 @@ export async function SiteHeader() {
   }
 
   return (
-    <header className="flex w-full items-center justify-between gap-2 bg-zinc-50 px-4 py-3 dark:bg-black">
+    <header className="sticky top-0 z-40 flex w-full items-center justify-between gap-2 bg-zinc-50 px-4 py-3 dark:bg-black">
       <Button
         nativeButton={false}
         variant="ghost"
