@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -29,6 +31,7 @@ export function PositionForm({
   formAction,
   pending,
   error,
+  errorTeam,
   onBackAction,
   submitLabel,
   pendingLabel,
@@ -40,6 +43,7 @@ export function PositionForm({
   formAction: (formData: FormData) => void;
   pending: boolean;
   error?: string;
+  errorTeam?: { id: number; name: string };
   onBackAction: () => void;
   submitLabel: string;
   pendingLabel: string;
@@ -78,7 +82,20 @@ export function PositionForm({
         </Select>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <div className="flex flex-col items-start gap-1.5">
+          <p className="text-sm text-destructive">{error}</p>
+          {errorTeam && (
+            <Link
+              href={`/teams/${errorTeam.id}`}
+              className="flex items-center gap-1 text-sm underline underline-offset-2"
+            >
+              View {errorTeam.name}
+              <ArrowRight className="size-3.5" />
+            </Link>
+          )}
+        </div>
+      )}
 
       <div className="flex gap-2">
         <Button
