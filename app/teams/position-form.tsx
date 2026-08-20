@@ -15,44 +15,44 @@ import {
 export type Position = { id: number; name: string };
 
 /**
- * Step 2 of the create-team flow: the captain's own position.
+ * The final step of both the create-team and join-team flows: the player's
+ * own position.
  *
- * This is the form that actually calls createTeam, so the step 1 answers ride
- * along as hidden inputs — the step 1 fields are unmounted by the time this
- * renders, and only what is inside this <form> reaches the Server Action.
+ * This is the form that actually calls the Server Action, so every answer
+ * from the earlier step rides along in `hiddenFields` — those fields are
+ * unmounted by the time this renders, and only what is inside this <form>
+ * reaches the action.
  */
 export function PositionForm({
   positions,
   positionId,
   onPositionChangeAction,
-  teamDetails,
+  hiddenFields,
   formAction,
   pending,
   error,
   errorTeam,
   onBackAction,
+  submitLabel,
+  pendingLabel,
 }: {
   positions: Position[];
   positionId: string;
   onPositionChangeAction: (value: string) => void;
-  teamDetails: {
-    name: string;
-    seasonId: string;
-    tierId: string;
-    jerseyId: string;
-  };
+  hiddenFields: Record<string, string>;
   formAction: (formData: FormData) => void;
   pending: boolean;
   error?: string;
   errorTeam?: { id: number; name: string };
   onBackAction: () => void;
+  submitLabel: string;
+  pendingLabel: string;
 }) {
   return (
     <form action={formAction} className="flex flex-col gap-4">
-      <input type="hidden" name="name" value={teamDetails.name} />
-      <input type="hidden" name="seasonId" value={teamDetails.seasonId} />
-      <input type="hidden" name="tierId" value={teamDetails.tierId} />
-      <input type="hidden" name="jerseyId" value={teamDetails.jerseyId} />
+      {Object.entries(hiddenFields).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="positionId">
@@ -112,7 +112,7 @@ export function PositionForm({
           disabled={pending || positionId === ""}
           className="flex-1"
         >
-          {pending ? "Creating…" : "Create team"}
+          {pending ? pendingLabel : submitLabel}
         </Button>
       </div>
     </form>
