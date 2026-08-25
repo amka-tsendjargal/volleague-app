@@ -4,6 +4,7 @@ import { SquarePenIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { setSeasonStatus } from "./actions";
 import { SeasonStatusMenu } from "./season-status-menu";
 
 // Shape returned by PostgREST, so these stay snake_case.
@@ -23,17 +24,34 @@ type Season = {
   teams: { tier_id: number }[];
 };
 
-// The `seasons.status` values, as a captain-facing word plus the colour that
-// word carries. Only registration gets an accent — the rest are states nobody
-// needs to act on. `complete` is here to be displayed, never to be set: the
-// card derives it from the last week having passed.
-const STATUS_BADGES: Record<string, { label: string; className: string }> = {
-  draft: { label: "Draft", className: "bg-muted text-muted-foreground" },
+// The `seasons.status` values, as a captain-facing word plus the colour it
+// carries and a line saying what the status means for players — the word
+// alone never did, which is why the badge used to read as decoration. Every
+// live status gets one; `complete` is here to be displayed, never to be set,
+// so it stays neutral and silent. The colour is spelled out twice because
+// Tailwind only sees class names it can read literally in the source.
+const STATUS_BADGES: Record<
+  string,
+  { label: string; className: string; note?: string; noteClassName?: string }
+> = {
+  draft: {
+    label: "Draft",
+    className: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+    note: "Not visible to players — registration won’t open until you publish",
+    noteClassName: "text-amber-700 dark:text-amber-400",
+  },
   registration: {
     label: "Open",
     className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+    note: "Visible to players — teams can register now",
+    noteClassName: "text-emerald-700 dark:text-emerald-400",
   },
-  scheduled: { label: "Scheduled", className: "bg-muted text-muted-foreground" },
+  scheduled: {
+    label: "Scheduled",
+    className: "bg-purple-500/15 text-purple-700 dark:text-purple-400",
+    note: "Registration is closed",
+    noteClassName: "text-purple-700 dark:text-purple-400",
+  },
   complete: { label: "Complete", className: "bg-muted text-muted-foreground" },
 };
 
@@ -108,20 +126,30 @@ export default async function AdminSeasonsPage() {
             ? new Date(lastMatch) < new Date()
             : false;
 
+          // Same test the badge makes, so the card never says "Draft" while
+          // styling itself as anything else.
+          const isDraft = !isComplete && season.status === "draft";
+
           const badge = STATUS_BADGES[isComplete ? "complete" : season.status] ?? {
             label: season.status,
             className: "bg-muted text-muted-foreground",
           };
 
           return (
-            <li key={season.id} className="rounded-xl border p-6">
+            <li
+              key={season.id}
+              className={cn(
+                "rounded-xl border p-6",
+                isDraft && "border-dashed border-amber-500/40"
+              )}
+            >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-3">
                     <p className="text-lg font-semibold">{season.name}</p>
                     <span
                       className={cn(
-                        "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                        "rounded-full px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide",
                         badge.className
                       )}
                     >
@@ -133,7 +161,15 @@ export default async function AdminSeasonsPage() {
                     {season.season_tiers.length} tiers
                   </p>
 
-                  {closesAt && (
+                  {badge.note && (
+                    <p className={cn("text-sm", badge.noteClassName)}>
+                      {badge.note}
+                    </p>
+                  )}
+
+                  {/* A draft has no live deadline — showing one next to
+                      "registration won't open" reads as a contradiction. */}
+                  {closesAt && !isDraft && (
                     <span className="mt-1 w-fit rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                       reg closes {format(closesAt, "MMM d")} ·{" "}
                       {daysLeft > 0 ? `${daysLeft} days left` : "closed"}
@@ -188,6 +224,19 @@ export default async function AdminSeasonsPage() {
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {isDraft && (
+                <form
+                  action={setSeasonStatus.bind(null, season.id, "registration")}
+                  className="mt-5 flex items-center justify-between gap-4 border-t pt-5"
+                >
+                  <p className="text-sm text-muted-foreground">
+                    {season.teams.length} team
+                    {season.teams.length === 1 ? "" : "s"} registered so far
+                  </p>
+                  <Button type="submit">Publish season</Button>
+                </form>
               )}
             </li>
           );
