@@ -133,11 +133,23 @@ where seasons.name = 'Fall 2026 - Friday' and tiers.name = 'Competitive'
 on conflict (season_id, tier_id) do nothing;
 
 -- Fridays at 7pm; the last two weeks are playoffs.
+--
+-- The weeks are built as local wall-clock timestamps and converted to
+-- instants at the end, which is what keeps every week at 7pm. Adding an
+-- interval to a timestamptz instead would add a fixed 168 hours (the
+-- session here is UTC, which has no DST), pinning the instant rather than
+-- the clock time — so every week after the season crosses out of daylight
+-- saving on Nov 1 would land an hour earlier than the one before it.
+-- `at time zone` applies whichever offset the named zone was on for that
+-- particular date, so the hour survives the change. Same reasoning as
+-- generateWeekTimes in app/admin/seasons/new/week-times.ts, which is why
+-- the real create-season flow already gets this right.
 insert into public.season_weeks (season_id, week_number, match_time, is_playoff)
 select
   seasons.id,
   week_number,
-  timestamptz '2026-09-11 19:00-04:00' + (week_number - 1) * interval '7 days',
+  (timestamp '2026-09-11 19:00' + (week_number - 1) * interval '7 days')
+    at time zone 'America/New_York',
   week_number > 12
 from public.seasons, generate_series(1, 14) as week_number
 where seasons.name = 'Fall 2026 - Friday'

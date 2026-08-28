@@ -6,6 +6,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SeasonStatusMenu } from "./season-status-menu";
 import { GenerateScheduleButton } from "./generate-schedule-button";
+import { statusBadge, TIER_PILLS } from "./badges";
 
 // Shape returned by PostgREST, so these stay snake_case.
 type Season = {
@@ -22,27 +23,6 @@ type Season = {
   }[];
   // One row per team; grouped by tier_id below for the per-tier counts.
   teams: { tier_id: number }[];
-};
-
-// The `seasons.status` values, as a captain-facing word plus the colour that
-// word carries. Only registration gets an accent — the rest are states nobody
-// needs to act on. `complete` is here to be displayed, never to be set: the
-// card derives it from the last week having passed.
-const STATUS_BADGES: Record<string, { label: string; className: string }> = {
-  draft: { label: "Draft", className: "bg-muted text-muted-foreground" },
-  registration: {
-    label: "Open",
-    className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  },
-  scheduled: { label: "Scheduled", className: "bg-muted text-muted-foreground" },
-  complete: { label: "Complete", className: "bg-muted text-muted-foreground" },
-};
-
-// Tiers are rows, not an enum, so a tier we have no colour for still has to
-// render — it falls back to the neutral pill.
-const TIER_PILLS: Record<string, string> = {
-  Competitive: "bg-rose-100 text-rose-900",
-  Intermediate: "bg-emerald-100 text-emerald-900",
 };
 
 export default async function AdminSeasonsPage() {
@@ -109,17 +89,19 @@ export default async function AdminSeasonsPage() {
             ? new Date(lastMatch) < new Date()
             : false;
 
-          const badge = STATUS_BADGES[isComplete ? "complete" : season.status] ?? {
-            label: season.status,
-            className: "bg-muted text-muted-foreground",
-          };
+          const badge = statusBadge(isComplete ? "complete" : season.status);
 
           return (
             <li key={season.id} className="rounded-xl border p-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-3">
-                    <p className="text-lg font-semibold">{season.name}</p>
+                    <Link
+                      href={`/admin/seasons/${season.id}`}
+                      className="text-lg font-semibold hover:underline"
+                    >
+                      {season.name}
+                    </Link>
                     <span
                       className={cn(
                         "rounded-full px-2.5 py-0.5 text-xs font-medium",
@@ -153,13 +135,17 @@ export default async function AdminSeasonsPage() {
                   >
                     <SquarePenIcon />
                   </Button>
-                  {/* A draft season has no teams yet — registration has to
-                      open before anyone can create one — so there is
-                      nothing to pair up. */}
+                  {/* Teams have to be settled before they can be paired up,
+                      so this waits for registration to be closed. Still
+                      offered at `scheduled`, where regenerating is allowed
+                      until the first score is recorded. */}
                   <GenerateScheduleButton
                     seasonId={season.id}
                     seasonName={season.name}
-                    disabled={season.status === "draft"}
+                    disabled={
+                      season.status !== "closed" &&
+                      season.status !== "scheduled"
+                    }
                   />
                   <SeasonStatusMenu
                     seasonId={season.id}

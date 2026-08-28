@@ -9,10 +9,14 @@ import { setSeasonStatus } from "./actions";
 // The statuses an admin drives by hand. `complete` is deliberately absent:
 // a season is over once its last week has passed, so the card derives it
 // rather than waiting for someone to remember to set it.
+//
+// `scheduled` is absent for a different reason: publishing has to prove the
+// season actually has fixtures, so it is the Publish button and nothing else.
+// Picking `closed` here on a published season is how an admin unpublishes.
 const SELECTABLE_STATUSES = [
   { value: "draft", label: "Draft" },
   { value: "registration", label: "Open" },
-  { value: "scheduled", label: "Scheduled" },
+  { value: "closed", label: "Closed" },
 ] as const;
 
 export function SeasonStatusMenu({
