@@ -31,6 +31,21 @@ export function firstPlayoffWeek(
 }
 
 /**
+ * Splits the courts field ("1, 2, 3") into numbers. Empty entries are
+ * dropped so a trailing comma is harmless; anything else non-numeric is
+ * kept as NaN for validateSeasonInput to report rather than silently
+ * skipped, since dropping it would schedule matches onto courts the admin
+ * never listed.
+ */
+export function parseCourtNumbers(raw: string): number[] {
+  return raw
+    .split(",")
+    .map((court) => court.trim())
+    .filter((court) => court.length > 0)
+    .map(Number);
+}
+
+/**
  * Returns the first problem found, or null. Fail-fast rather than a
  * per-field map, since the form shows one error at a time.
  *
@@ -41,7 +56,8 @@ export function validateSeasonInput(
   name: string,
   weekTimes: string[],
   playoffWeeks: number,
-  tierCaps: TierCap[]
+  tierCaps: TierCap[],
+  courtNumbers: number[]
 ): string | null {
   if (name.length === 0) {
     return "Enter a season name.";
@@ -80,6 +96,20 @@ export function validateSeasonInput(
     )
   ) {
     return `Each tier needs a cap of at least ${MIN_TEAMS_PER_TIER} teams.`;
+  }
+
+  if (courtNumbers.length === 0) {
+    return "Enter at least one court number.";
+  }
+  if (
+    courtNumbers.some(
+      (courtNumber) => !Number.isInteger(courtNumber) || courtNumber < 1
+    )
+  ) {
+    return "Court numbers must be whole numbers above zero.";
+  }
+  if (new Set(courtNumbers).size !== courtNumbers.length) {
+    return "Each court can only be listed once.";
   }
 
   return null;

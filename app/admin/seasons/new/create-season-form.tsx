@@ -34,6 +34,10 @@ export function CreateSeasonForm({ tiers }: { tiers: Tier[] }) {
   const [firstMatch, setFirstMatch] = useState("");
   const [regularWeeks, setRegularWeeks] = useState("13");
   const [playoffWeeks, setPlayoffWeeks] = useState("2");
+  // Free text rather than a count, because the numbers matter: a venue can
+  // run courts 3, 4 and 7 while the rest of the facility is booked. Parsed
+  // and validated server-side.
+  const [courts, setCourts] = useState("");
   // Dates the season skips, by position in the generated run. Skipped dates
   // stay on screen — they're struck through, not removed — so it's obvious
   // which nights were given up and why the season got shorter.
@@ -128,7 +132,10 @@ export function CreateSeasonForm({ tiers }: { tiers: Tier[] }) {
   });
 
   const isFormFilled =
-    name.trim().length > 0 && playingWeeks.length > 0 && tierCaps.length > 0;
+    name.trim().length > 0 &&
+    playingWeeks.length > 0 &&
+    tierCaps.length > 0 &&
+    courts.trim().length > 0;
 
   return (
     <Card className="w-full max-w-2xl">
@@ -166,6 +173,25 @@ export function CreateSeasonForm({ tiers }: { tiers: Tier[] }) {
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="courtNumbers">
+              Courts<span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="courtNumbers"
+              name="courtNumbers"
+              required
+              placeholder="1, 2, 3"
+              value={courts}
+              onChange={(event) => setCourts(event.target.value)}
+            />
+            <p className="text-sm text-muted-foreground">
+              The court numbers this season plays on. Every match in a week
+              starts at the same time, so a week can hold as many matches as
+              there are courts.
+            </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">

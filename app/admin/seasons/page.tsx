@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SeasonStatusMenu } from "./season-status-menu";
+import { GenerateScheduleButton } from "./generate-schedule-button";
 
 // Shape returned by PostgREST, so these stay snake_case.
 type Season = {
@@ -141,8 +142,8 @@ export default async function AdminSeasonsPage() {
                   )}
                 </div>
 
-                {/* Both are placeholders for now — a season can only be edited
-                    while it is still a draft. */}
+                {/* Edit is a placeholder for now — a season can only be
+                    edited while it is still a draft. */}
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
@@ -152,6 +153,14 @@ export default async function AdminSeasonsPage() {
                   >
                     <SquarePenIcon />
                   </Button>
+                  {/* A draft season has no teams yet — registration has to
+                      open before anyone can create one — so there is
+                      nothing to pair up. */}
+                  <GenerateScheduleButton
+                    seasonId={season.id}
+                    seasonName={season.name}
+                    disabled={season.status === "draft"}
+                  />
                   <SeasonStatusMenu
                     seasonId={season.id}
                     status={season.status}
