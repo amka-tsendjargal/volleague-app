@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { approveMember, declineMember } from "./actions";
 import { CopyButton } from "./copy-button";
@@ -20,6 +22,16 @@ type TeamUserRow = {
   is_approved: boolean;
   users: { first_name: string; last_name: string } | null;
   positions: { name: string } | null;
+};
+
+type FixtureRow = {
+  id: number;
+  court_number: number | null;
+  team_a_id: number | null;
+  // schedules.season_week_id is NOT NULL, so the embed always resolves.
+  season_weeks: { week_number: number; match_time: string };
+  teamA: { name: string } | null;
+  teamB: { name: string } | null;
 };
 
 export default async function TeamDetailsPage({
@@ -63,6 +75,7 @@ export default async function TeamDetailsPage({
       data: { user },
     },
     { data: isAdmin },
+    { data: fixtureRows, error: fixturesError },
   ] = await Promise.all([
     supabase
       .from("team_users")
@@ -72,11 +85,29 @@ export default async function TeamDetailsPage({
       .eq("team_id", team.id),
     supabase.auth.getUser(),
     supabase.rpc("is_admin"),
+    // The read policy on schedules only serves fixtures for a scheduled or
+    // complete season, so nothing coming back means "not published yet" —
+    // no need to look at the season's status here.
+    supabase
+      .from("schedules")
+      .select(
+        "id, court_number, team_a_id, season_weeks(week_number, match_time), teamA:teams!team_a_id(name), teamB:teams!team_b_id(name)"
+      )
+      .or(`team_a_id.eq.${team.id},team_b_id.eq.${team.id}`)
+      // Orders the fixtures themselves by their week. `referencedTable` would
+      // instead sort rows *inside* the embed, of which there is only one.
+      .order("season_weeks(week_number)"),
   ]);
 
   if (rosterError) {
     throw new Error(`Failed to load the roster for team ${id}`, {
       cause: rosterError,
+    });
+  }
+
+  if (fixturesError) {
+    throw new Error(`Failed to load the games for team ${id}`, {
+      cause: fixturesError,
     });
   }
 
@@ -109,6 +140,21 @@ export default async function TeamDetailsPage({
   // PostgREST returns a single object for a many-to-one embed; supabase-js
   // infers an array without generated database types.
   const tierName = (team as unknown as TeamRow).tiers?.name;
+
+  const now = new Date();
+  const games = ((fixtureRows as unknown as FixtureRow[] | null) ?? []).map(
+    (fixture) => ({
+      id: fixture.id,
+      weekNumber: fixture.season_weeks.week_number,
+      matchTime: new Date(fixture.season_weeks.match_time),
+      courtNumber: fixture.court_number,
+      // The fixture names both sides; this team is one of them, so the other
+      // column is the opponent.
+      opponent:
+        (fixture.team_a_id === team.id ? fixture.teamB : fixture.teamA)?.name ??
+        "TBD",
+    })
+  );
 
   return (
     <div className="flex flex-1 justify-center bg-zinc-50 px-4 py-16 dark:bg-black">
@@ -178,6 +224,46 @@ export default async function TeamDetailsPage({
                       {player.position}
                     </span>
                   )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <h2 className="text-lg font-medium text-black dark:text-zinc-50">
+            Games
+          </h2>
+
+          {games.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              The schedule hasn&rsquo;t been published yet.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {games.map((game) => (
+                <li
+                  key={game.id}
+                  className={cn(
+                    "flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg bg-card px-4 py-3 text-sm ring-1 ring-foreground/10",
+                    // Played weeks recede so the next game is what stands
+                    // out. Opacity rather than a muted colour, which the
+                    // opponent name below sets for itself.
+                    game.matchTime < now && "opacity-60"
+                  )}
+                >
+                  <span className="text-card-foreground">
+                    <span className="mr-2 text-xs text-muted-foreground">
+                      Week {game.weekNumber}
+                    </span>
+                    vs {game.opponent}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {format(game.matchTime, "EEE, MMM d")} ·{" "}
+                    {format(game.matchTime, "h:mm a")}
+                    {game.courtNumber !== null &&
+                      ` · Court ${game.courtNumber}`}
+                  </span>
                 </li>
               ))}
             </ul>

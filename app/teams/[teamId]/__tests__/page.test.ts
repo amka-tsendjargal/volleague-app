@@ -62,6 +62,26 @@ const PENDING_ROW = {
   positions: { name: 'Libero' },
 }
 
+// Two fixtures for team 7, one from each side of the pairing, so the tests
+// see whether the page picks the opponent out of the right column.
+const HOME_FIXTURE = {
+  id: 11,
+  court_number: 3,
+  team_a_id: 7,
+  season_weeks: { week_number: 1, match_time: '2026-09-11T23:00:00+00:00' },
+  teamA: { name: 'Spikers' },
+  teamB: { name: 'Blockers' },
+}
+
+const AWAY_FIXTURE = {
+  id: 12,
+  court_number: null,
+  team_a_id: 9,
+  season_weeks: { week_number: 2, match_time: '2026-09-18T23:00:00+00:00' },
+  teamA: { name: 'Diggers' },
+  teamB: { name: 'Spikers' },
+}
+
 // What the read policy on team_users hands back to someone with no claim on
 // the pending row — the approved roster and nothing else.
 const APPROVED_ONLY = [CAPTAIN_ROW, TEAMMATE_ROW]
@@ -73,6 +93,8 @@ const APPROVED_ONLY = [CAPTAIN_ROW, TEAMMATE_ROW]
 type TableMock = {
   select: (...args: unknown[]) => TableMock
   eq: (...args: unknown[]) => TableMock
+  or: (...args: unknown[]) => TableMock
+  order: (...args: unknown[]) => TableMock
   maybeSingle: () => Promise<Result>
   then: (
     onfulfilled: (value: Result) => unknown,
@@ -84,6 +106,8 @@ function createTableMock(result: Result): TableMock {
   const builder: TableMock = {
     select: jest.fn(() => builder),
     eq: jest.fn(() => builder),
+    or: jest.fn(() => builder),
+    order: jest.fn(() => builder),
     maybeSingle: jest.fn(() => Promise.resolve(result)),
     then: (
       onfulfilled: (value: Result) => unknown,
@@ -98,6 +122,7 @@ function mockSupabase(
   config: {
     teams?: Result
     teamUsers?: Result
+    schedules?: Result
     isAdmin?: boolean
     viewerId?: string | null
   } = {}
@@ -108,10 +133,14 @@ function mockSupabase(
   const teamUsersTable = createTableMock(
     config.teamUsers ?? { data: [], error: null }
   )
+  const schedulesTable = createTableMock(
+    config.schedules ?? { data: [], error: null }
+  )
 
   const fromMock = jest.fn((table: string) => {
     if (table === 'teams') return teamsTable
     if (table === 'team_users') return teamUsersTable
+    if (table === 'schedules') return schedulesTable
     throw new Error(`Unexpected table: ${table}`)
   })
 
@@ -136,7 +165,14 @@ function mockSupabase(
     auth: { getUser: getUserMock },
   } as unknown as Awaited<ReturnType<typeof createClient>>)
 
-  return { fromMock, rpcMock, getUserMock, teamsTable, teamUsersTable }
+  return {
+    fromMock,
+    rpcMock,
+    getUserMock,
+    teamsTable,
+    teamUsersTable,
+    schedulesTable,
+  }
 }
 
 function renderPage(teamId = '7') {
@@ -291,5 +327,42 @@ describe('TeamDetailsPage', () => {
     expect(text).toContain('A1B2C3D4')
     expect(text).toContain('Pending requests')
     expect(text).toContain('Approve')
+  })
+  // A fixture names both teams; which column holds the opponent depends on
+  // the side this team was drawn on.
+  it('lists each game against the other team in the fixture', async () => {
+    mockSupabase({
+      teamUsers: { data: APPROVED_ONLY, error: null },
+      schedules: { data: [HOME_FIXTURE, AWAY_FIXTURE], error: null },
+    })
+
+    const text = renderedText(await renderPage())
+
+    expect(text).toContain('Blockers')
+    expect(text).toContain('Diggers')
+    // Never itself, from either column.
+    expect(text).not.toMatch(/vs\s+Spikers/)
+  })
+
+  // The read policy on schedules serves nothing until the admin publishes,
+  // so no rows is the unpublished case rather than a team with no games.
+  it('says the schedule is unpublished when no fixtures come back', async () => {
+    mockSupabase({ teamUsers: { data: APPROVED_ONLY, error: null } })
+
+    const text = renderedText(await renderPage())
+
+    expect(text).toContain('The schedule hasn\u2019t been published yet.')
+  })
+
+  it('throws instead of showing an empty schedule when the query fails', async () => {
+    const error = { message: 'JWT expired', code: 'PGRST301' }
+    mockSupabase({
+      teamUsers: { data: APPROVED_ONLY, error: null },
+      schedules: { data: null, error },
+    })
+
+    await expect(renderPage()).rejects.toThrow(
+      'Failed to load the games for team 7'
+    )
   })
 })
