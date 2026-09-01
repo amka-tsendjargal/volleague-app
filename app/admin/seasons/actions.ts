@@ -1,14 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { MIN_PLAYERS_PER_TEAM } from "@/lib/constants";
 import { generateFixtures, validateTiers, type TierEntry } from "./round-robin";
 
 // The statuses an admin may set. Narrower than the seasons_status_valid
 // check constraint on purpose — `complete` is derived from the last week
-// having passed, so nothing should be writing it here.
-const VALID_STATUSES = ["draft", "registration", "scheduled"];
+// having passed, and `scheduled` belongs to publishSchedule, which first
+// proves the season has fixtures to publish. Leaving it here would make the
+// status menu a way around that check. Setting `closed` on a published
+// season is the way back.
+const VALID_STATUSES = ["draft", "registration", "closed"];
 
 export async function setSeasonStatus(seasonId: number, status: string) {
   if (!VALID_STATUSES.includes(status)) return;
@@ -23,7 +27,11 @@ export async function setSeasonStatus(seasonId: number, status: string) {
 
   await supabase.from("seasons").update({ status }).eq("id", seasonId);
 
+  // Both surfaces show the status, and this menu appears on both, so
+  // invalidating only the list would leave the details page showing the
+  // badge it rendered before the change.
   revalidatePath("/admin/seasons");
+  revalidatePath(`/admin/seasons/${seasonId}`);
 }
 
 export type GenerateScheduleState = {
@@ -40,9 +48,11 @@ type TeamRow = {
   team_users: { count: number }[];
 };
 
-type SeasonRow = { court_numbers: number[] };
+type SeasonRow = { court_numbers: number[]; status: string };
 
 type WeekRow = { id: number };
+
+type WeekFixtureCountRow = { id: number; schedules: { count: number }[] };
 
 /**
  * Pairs every tier's confirmed teams round robin across the season's
@@ -71,12 +81,21 @@ export async function generateSchedule(
 
   const { data: season } = await supabase
     .from("seasons")
-    .select("court_numbers")
+    .select("court_numbers, status")
     .eq("id", seasonId)
     .maybeSingle();
 
   if (!season) {
     return { error: "That season no longer exists." };
+  }
+
+  // Pairing teams that can still change is pairing the wrong teams: while a
+  // season is open, the next captain to sign up invalidates whatever was
+  // generated. `scheduled` is allowed so a published schedule can still be
+  // regenerated — the RPC refuses once any score exists.
+  const { court_numbers: courtNumbers, status } = season as SeasonRow;
+  if (status !== "closed" && status !== "scheduled") {
+    return { error: "Close registration before generating the schedule." };
   }
 
   // Playoff weeks are left empty on purpose — a bracket depends on final
@@ -93,10 +112,15 @@ export async function generateSchedule(
     return { error: "This season has no regular-season weeks to schedule." };
   }
 
+  // The is_approved filter is load-bearing: a pending row is a request to
+  // join, not a roster spot, and the read policy on team_users shows an
+  // admin every row. Without it a team with four players and two open
+  // requests counts as six and gets scheduled with a side it can't field.
   const { data: teamRows } = await supabase
     .from("teams")
     .select("id, tier_id, tiers(name), team_users(count)")
     .eq("season_id", seasonId)
+    .eq("team_users.is_approved", true)
     .order("id");
 
   const teams = (teamRows as unknown as TeamRow[] | null) ?? [];
@@ -122,8 +146,6 @@ export async function generateSchedule(
       });
     }
   }
-
-  const { court_numbers: courtNumbers } = season as SeasonRow;
 
   const validationError = validateTiers(tiers, courtNumbers);
   if (validationError) {
@@ -161,8 +183,71 @@ export async function generateSchedule(
   }
 
   revalidatePath("/admin/seasons");
+  revalidatePath(`/admin/seasons/${seasonId}`);
 
   return { success: true, fixtureCount: fixtureCount as number };
+}
+
+export type PublishScheduleState = {
+  error?: string;
+  success?: boolean;
+};
+
+/**
+ * Makes a generated schedule public by moving the season to 'scheduled'.
+ *
+ * Separate from setSeasonStatus because publishing is not just any status
+ * change: it is what the read policy on schedules keys off, so it should
+ * not be possible to announce a season that has no fixtures. Flipping the
+ * status is also what closes team creation — create_team_with_captain
+ * only accepts a season still in 'registration'.
+ */
+export async function publishSchedule(
+  _prevState: PublishScheduleState,
+  formData: FormData
+): Promise<PublishScheduleState> {
+  const seasonId = Number(formData.get("seasonId"));
+  if (!Number.isInteger(seasonId)) {
+    return { error: "Could not tell which season to publish." };
+  }
+
+  const supabase = await createClient();
+
+  const { data: isAdmin } = await supabase.rpc("is_admin");
+  if (!isAdmin) {
+    return { error: "Only an admin can publish a schedule." };
+  }
+
+  // schedules has no season_id of its own, so the season's fixtures are
+  // counted through its weeks.
+  const { data: weekRows } = await supabase
+    .from("season_weeks")
+    .select("id, schedules(count)")
+    .eq("season_id", seasonId);
+
+  const weeks = (weekRows as unknown as WeekFixtureCountRow[] | null) ?? [];
+  const fixtureCount = weeks.reduce(
+    (total, week) => total + (week.schedules[0]?.count ?? 0),
+    0
+  );
+
+  if (fixtureCount === 0) {
+    return { error: "Generate a schedule before publishing it." };
+  }
+
+  const { error } = await supabase
+    .from("seasons")
+    .update({ status: "scheduled" })
+    .eq("id", seasonId);
+
+  if (error) {
+    return { error: "Could not publish the schedule. Please try again." };
+  }
+
+  revalidatePath("/admin/seasons");
+  revalidatePath(`/admin/seasons/${seasonId}`);
+
+  return { success: true };
 }
 
 // The button only shows for seasons with no teams, and teams_season_tier_offered
@@ -178,4 +263,7 @@ export async function deleteSeason(formData: FormData) {
   await supabase.from("seasons").delete().eq("id", seasonId);
 
   revalidatePath("/admin/seasons");
+  // Called from the season's own details page, which no longer has a season
+  // to render — redirect rather than leave the caller on a 404.
+  redirect("/admin/seasons");
 }

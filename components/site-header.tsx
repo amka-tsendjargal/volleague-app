@@ -51,7 +51,10 @@ export async function SiteHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-40 flex w-full items-center justify-between gap-2 bg-zinc-50 px-4 py-3 dark:bg-black">
+    // h-14 rather than letting padding and the avatar add up to it: pages
+    // that size themselves to "the viewport minus this header" need the
+    // height to be a number they can rely on. Same 56px it already was.
+    <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between gap-2 bg-zinc-50 px-4 dark:bg-black">
       <Button
         nativeButton={false}
         variant="ghost"

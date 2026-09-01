@@ -12,10 +12,14 @@ export function GenerateScheduleButton({
   seasonId,
   seasonName,
   disabled,
+  label,
 }: {
   seasonId: number;
   seasonName: string;
   disabled: boolean;
+  // The seasons list has no room for words, so it gets the bare icon. The
+  // details page has a whole empty state to fill and says it in full.
+  label?: string;
 }) {
   const [state, formAction, pending] = useActionState(
     generateSchedule,
@@ -49,11 +53,12 @@ export function GenerateScheduleButton({
       <Button
         type="submit"
         variant="outline"
-        size="icon"
-        aria-label={`Generate schedule for ${seasonName}`}
+        size={label ? "sm" : "icon"}
+        aria-label={label ? undefined : `Generate schedule for ${seasonName}`}
         disabled={disabled || pending}
       >
         <CalendarPlusIcon />
+        {label && <span>{pending ? "Generating…" : label}</span>}
       </Button>
     </form>
   );
