@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { format } from "date-fns";
 import { ArrowUpRightIcon, ChartColumnIcon, VideoIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
@@ -18,6 +19,15 @@ type OpenSeason = {
   teams: { tier_id: number }[];
 };
 
+type NextGameRow = {
+  court_number: number | null;
+  team_a_id: number | null;
+  // schedules.season_week_id is NOT NULL, so the embed always resolves.
+  season_weeks: { match_time: string };
+  teamA: { name: string } | null;
+  teamB: { name: string } | null;
+};
+
 export default async function Home() {
   const supabase = await createClient();
 
@@ -26,6 +36,45 @@ export default async function Home() {
   } = await supabase.auth.getUser();
 
   const {data: isAdmin } = await supabase.rpc("is_admin");
+
+  // Two steps, because a fixture has no path back to a player: the teams the
+  // viewer plays on, then the soonest fixture with one of them on either
+  // side. The read policy on schedules serves published seasons only, so a
+  // draft schedule can't surface here.
+  const { data: memberships } = user
+    ? await supabase
+        .from("team_users")
+        .select("team_id")
+        .eq("user_id", user.id)
+        .eq("is_approved", true)
+    : { data: null };
+
+  const teamIds = (memberships ?? []).map((membership) => membership.team_id);
+
+  const { data: nextGameRows } = teamIds.length
+    ? await supabase
+        .from("schedules")
+        .select(
+          "court_number, team_a_id, season_weeks!inner(match_time), teamA:teams!team_a_id(name), teamB:teams!team_b_id(name)"
+        )
+        .or(`team_a_id.in.(${teamIds}),team_b_id.in.(${teamIds})`)
+        // !inner above is what lets the week's time filter and order the
+        // fixtures themselves rather than the rows inside the embed.
+        .gte("season_weeks.match_time", new Date().toISOString())
+        .order("season_weeks(match_time)")
+        .limit(1)
+    : { data: null };
+
+  const fixture = (nextGameRows as unknown as NextGameRow[] | null)?.[0];
+  const nextGame = fixture && {
+    matchTime: new Date(fixture.season_weeks.match_time),
+    courtNumber: fixture.court_number,
+    // The fixture names both sides; whichever isn't the viewer's team is who
+    // they are playing.
+    opponent:
+      (teamIds.includes(fixture.team_a_id) ? fixture.teamB : fixture.teamA)
+        ?.name ?? "TBD",
+  };
 
   // Seasons taking registrations get a banner each, with a row per tier that
   // still has room.
@@ -58,7 +107,7 @@ export default async function Home() {
     .filter((season) => season.tiers.length > 0);
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6 bg-zinc-50 px-4 text-center dark:bg-black">
+    <div className="relative flex flex-1 flex-col items-center justify-center gap-6 bg-zinc-50 px-4 text-center dark:bg-black">
       <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
         Volleague
       </h1>
@@ -168,6 +217,26 @@ export default async function Home() {
           </>
         )}
       </div>
+
+      {nextGame && (
+        // In normal flow on a phone, where a pinned corner would sit on top
+        // of the buttons above it.
+        <div className="w-full max-w-xs rounded-2xl border bg-background p-5 text-left sm:absolute sm:right-6 sm:bottom-6">
+          <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+            Your next game
+          </p>
+          <p className="mt-2 text-lg font-semibold">vs {nextGame.opponent}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {format(nextGame.matchTime, "EEE, MMM d")} ·{" "}
+            {format(nextGame.matchTime, "h:mm a")}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {nextGame.courtNumber === null
+              ? "Court TBD"
+              : `Court ${nextGame.courtNumber}`}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
